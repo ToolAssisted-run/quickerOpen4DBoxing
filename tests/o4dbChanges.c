@@ -1,6 +1,7 @@
 // The machine plays a movie and, from a frame on, counts the frame ends at which each byte of the memory differs from
 // the frame end before, and the 256-byte pages that ever differ from the first one compared: o4dbChanges GAMEDIR
-// MOVIE FROM [SOUND] [CLOCK]
+// MOVIE FROM [SOUND] [CLOCK]   (the environment's UNSAVED: "START-END,..." ranges left out of the pages' counts, as the
+// emulator's unsaved memory)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,7 @@ static uint8_t *prev, *ref;
 static uint32_t *count;
 static uint8_t pageDirty[SIZE / 256];
 static uint32_t maxDirty, frames;
+static uint8_t skip[SIZE / 256];
 
 static void frame_hook(uint64_t frame, void *ctx)
 {
@@ -25,7 +27,7 @@ static void frame_hook(uint64_t frame, void *ctx)
     if (m[i] != prev[i]) count[i]++;
   uint32_t dirty = 0;
   for (size_t p = 0; p < SIZE / 256; p++)
-    if (memcmp(m + p * 256, ref + p * 256, 256)) { pageDirty[p] = 1; dirty++; }
+    if (!skip[p] && memcmp(m + p * 256, ref + p * 256, 256)) { pageDirty[p] = 1; dirty++; }
   if (dirty > maxDirty) maxDirty = dirty;
   memcpy(prev, m, SIZE);
   frames++;
@@ -38,6 +40,14 @@ int main(int argc, char **argv)
   MovieInput *rows = movie_load(argv[2], &n);
   if (!rows) return 1;
   from = strtoull(argv[3], NULL, 10);
+  for (const char *u = getenv("UNSAVED"); u && *u;)
+  {
+    unsigned a, b;
+    if (sscanf(u, "%x-%x", &a, &b) != 2) break;
+    for (unsigned p = a / 256; p <= b / 256 && p < SIZE / 256; p++) skip[p] = 1;
+    u = strchr(u, ',');
+    if (u) u++;
+  }
   prev = malloc(SIZE); ref = malloc(SIZE); count = calloc(SIZE, sizeof *count);
   if (!o4db_setup(argv[1], argc > 4 ? argv[4] : "mt32", argc > 5 ? argv[5] : "1991-07-30 14:47:00", NULL)) { fprintf(stderr, "%s\n", o4db_error()); return 1; }
   o4db_set_frame_hook(frame_hook, NULL);

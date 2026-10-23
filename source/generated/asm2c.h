@@ -53,16 +53,43 @@ static inline void asm_vram_cost(u16 seg, u32 n)
   if (asm_vramCost && seg >= 0xB800 && seg < 0xC000)
     for (u32 k = 0; k < n; k++) { u32 c_ = asm_vram_cost_hook ? asm_vram_cost_hook() : asm_vramCost; asm_icount += c_; asm_waits += c_; }
 }
-// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's)
+// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's; the tests' trace variant, O4DB_TRACE,
+// gives each read of the program and the instruction's address to asm_trace_read)
+#ifdef O4DB_TRACE
+extern u32 asm_trace_ip;
+extern void (*asm_trace_read)(u32 addr, u16 value, int size);
+extern void (*asm_trace_pre_read)(u32 addr, int size);  // (before the read: the hook may change the memory read)
+static inline u8 asm_rd8(u16 seg, u16 a)
+{
+  if (asm_trace_pre_read) asm_trace_pre_read(((u32)seg << 4) + a, 1);
+  u8 v = g_mem[((u32)seg << 4) + a];
+  if (asm_trace_read) asm_trace_read(((u32)seg << 4) + a, v, 1);
+  return v;
+}
+static inline u16 asm_rd16(u16 seg, u16 a)
+{
+  if (asm_trace_pre_read) asm_trace_pre_read(((u32)seg << 4) + a, 2);
+  u16 v = *(u16a *)far_ptr(seg, a);
+  if (asm_trace_read) asm_trace_read(((u32)seg << 4) + a, v, 2);
+  return v;
+}
+#else
 static inline u8 asm_rd8(u16 seg, u16 a) { return g_mem[((u32)seg << 4) + a]; }
 static inline u16 asm_rd16(u16 seg, u16 a) { return *(u16a *)far_ptr(seg, a); }
+#endif
 #define M8(s, a) asm_rd8(SEGV_##s, (u16)(a))
 #define M16(s, a) asm_rd16(SEGV_##s, (u16)(a))
 extern O4DB_TLS u32 asm_watchAddr;
 void asm_watch_hit(u32 addr, u16 value);
 extern O4DB_TLS void (*asm_watch_hook)(u32 addr, u16 value);
+#ifdef O4DB_TRACE
+extern void (*asm_trace_write)(u32 addr, u16 value, int size);
+static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 1); }
+static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 2); }
+#else
 static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; }
 static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; }
+#endif
 #define W8(s, a, v) asm_wr8(SEGV_##s, (u16)(a), (u8)(v))
 #define W16(s, a, v) asm_wr16(SEGV_##s, (u16)(a), (u16)(v))
 #define SETL(r, v) ((r) = (u16)(((r) & 0xFF00) | (u8)(v)))
@@ -316,6 +343,9 @@ static inline void ASM_ICS(u32 site, u16 seg, u16 off)
 // the machine's step function marked where the generated code enters it (25bb:0202, the boxers' controls read)
 void asm_step_mark(void);  // (machine.c)
 #define ASM_STEP_MARK() asm_step_mark()
+// (tests: machine.c's o4db_test_hooks)
+extern void (*asm_test_hook)(u32 fn);
+extern unsigned asm_test_skip;
 
 // every instruction (ASM_I, before it) and every repetition of a repeated string instruction (ASM_REP_CHECK): in the
 // replay variant (ASM_REPLAY, replay.h) the program's instruction count, the oracle's interrupts and frame ends at
@@ -324,6 +354,9 @@ void asm_step_mark(void);  // (machine.c)
 #include "replay.h"
 #define ASM_I(o) do { asm_cur_off = (o); asm_cov[((u32)R.cs << 4) + (o)] = 1; if (asm_pos == asm_replay_next) asm_replay_at(o); asm_pos++; } while (0)
 #define ASM_REP_CHECK() ((void)(asm_pos == asm_replay_next && asm_replay_rep()))
+#elif defined(O4DB_TRACE)
+#define ASM_I(o) (asm_trace_ip = ((u32)R.cs << 16) | (u16)(o))
+#define ASM_REP_CHECK() ((void)0)
 #else
 #define ASM_I(o) ((void)0)
 #define ASM_REP_CHECK() ((void)0)

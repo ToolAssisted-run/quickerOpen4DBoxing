@@ -254,6 +254,8 @@ int game_run(const GameHost *h)
         text = must_sub(name, text, "#define ASM_BLOCK(n, off) do { asm_icount += (n); if (asm_block_hook) asm_block_hook(off); } while (0)",
                         "#define ASM_BLOCK(n, off) (asm_icount += (n))")
         text = must_sub(name, text, "#define FN(x) do { if (asm_fn_hook) asm_fn_hook(x); } while (0)", "#define FN(x) ((void)0)")
+        # (the trace variant: each instruction's address, CS:IP, for asm_trace_read)
+        text = must_sub(name, text, "#else\n#define ASM_I(o) ((void)0)\n", "#elif defined(O4DB_TRACE)\n#define ASM_I(o) (asm_trace_ip = ((u32)R.cs << 16) | (u16)(o))\n#define ASM_REP_CHECK() ((void)0)\n#else\n#define ASM_I(o) ((void)0)\n")
     if name == "types.h":
         text = must_sub(name, text, "#include <stdint.h>\n", "#include <stdint.h>\n#include \"tls.h\"\n")
     return text
@@ -293,18 +295,48 @@ static inline void ASM_ICS(u32 site, u16 seg, u16 off)
 // the machine's step function marked where the generated code enters it (25bb:0202, the boxers' controls read)
 void asm_step_mark(void);  // (machine.c)
 #define ASM_STEP_MARK() asm_step_mark()
+// (tests: machine.c's o4db_test_hooks)
+extern void (*asm_test_hook)(u32 fn);
+extern unsigned asm_test_skip;
 """
 
-MCGA_ACCESS = r"""// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's)
+MCGA_ACCESS = r"""// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's; the tests' trace variant, O4DB_TRACE,
+// gives each read of the program and the instruction's address to asm_trace_read)
+#ifdef O4DB_TRACE
+extern u32 asm_trace_ip;
+extern void (*asm_trace_read)(u32 addr, u16 value, int size);
+extern void (*asm_trace_pre_read)(u32 addr, int size);  // (before the read: the hook may change the memory read)
+static inline u8 asm_rd8(u16 seg, u16 a)
+{
+  if (asm_trace_pre_read) asm_trace_pre_read(((u32)seg << 4) + a, 1);
+  u8 v = g_mem[((u32)seg << 4) + a];
+  if (asm_trace_read) asm_trace_read(((u32)seg << 4) + a, v, 1);
+  return v;
+}
+static inline u16 asm_rd16(u16 seg, u16 a)
+{
+  if (asm_trace_pre_read) asm_trace_pre_read(((u32)seg << 4) + a, 2);
+  u16 v = *(u16a *)far_ptr(seg, a);
+  if (asm_trace_read) asm_trace_read(((u32)seg << 4) + a, v, 2);
+  return v;
+}
+#else
 static inline u8 asm_rd8(u16 seg, u16 a) { return g_mem[((u32)seg << 4) + a]; }
 static inline u16 asm_rd16(u16 seg, u16 a) { return *(u16a *)far_ptr(seg, a); }
+#endif
 #define M8(s, a) asm_rd8(SEGV_##s, (u16)(a))
 #define M16(s, a) asm_rd16(SEGV_##s, (u16)(a))
 extern O4DB_TLS u32 asm_watchAddr;
 void asm_watch_hit(u32 addr, u16 value);
 extern O4DB_TLS void (*asm_watch_hook)(u32 addr, u16 value);
+#ifdef O4DB_TRACE
+extern void (*asm_trace_write)(u32 addr, u16 value, int size);
+static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 1); }
+static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 2); }
+#else
 static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; }
 static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; }
+#endif
 """
 
 RESUME_RUNTIME = r"""
@@ -374,6 +406,12 @@ def resume_transform(text):
     text = FUNC_RE.sub(one, text)
     # the step function's entry (machine.c: a step ends where the game reads the boxers' controls)
     text = must_sub("box_core.c", text, "static void a_25bb_0202(void)\n{\n", "static void a_25bb_0202(void)\n{\n  ASM_STEP_MARK();\n")
+    # (tests, machine.c's o4db_test_hooks: a hook at each of the fight's events, a boxer's step (1eb6:3354), and at
+    # each frame's (1eb6:3624); the fight's scene not drawn (1c47:229c: a far return at once), so that the frames
+    # come at other times)
+    text = must_sub("box_core.c", text, "  FN(0x1EB63354);\n", "  FN(0x1EB63354);\n  if (asm_test_hook) asm_test_hook(0x1EB63354);\n")
+    text = must_sub("box_core.c", text, "  FN(0x1EB63624);\n", "  FN(0x1EB63624);\n  if (asm_test_hook) asm_test_hook(0x1EB63624);\n")
+    text = must_sub("box_core.c", text, "  FN(0x1C47229C);\n", "  FN(0x1C47229C);\n  if (asm_test_skip & 1) { R.sp += 4; return; }\n")
     return text, stats
 
 

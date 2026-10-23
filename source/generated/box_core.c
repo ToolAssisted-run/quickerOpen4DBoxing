@@ -28966,6 +28966,7 @@ static void a_1c47_229c(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case 2777: ASM_RCALL(); goto R_2777; case 2778: ASM_RCALL(); goto R_2778; case 2779: ASM_RDONE(); goto L_2337; case 2780: ASM_RCALL(); goto R_2780; case 2781: ASM_RDONE(); goto L_23a3; case 2782: ASM_RCALL(); goto R_2782; case 2783: ASM_RCALL(); goto R_2783; case 2784: ASM_RDONE(); goto L_2365; case 2785: ASM_RDONE(); goto L_2407; case 2786: ASM_RDONE(); goto L_22b6; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x1C47229C);
+  if (asm_test_skip & 1) { R.sp += 4; return; }
   R.cs = 0x146a;
   ASM_I(0x229c); ASM_BLOCK(5, 0x229c); PUSH(R.bp);             // 229c push bp
   ASM_I(0x229d); R.bp = (u16)(R.sp);                           // 229d mov bp, sp
@@ -34669,6 +34670,7 @@ static void a_1eb6_3354(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case 3066: ASM_RCALL(); goto R_3066; case 3067: ASM_RCALL(); goto R_3067; case 3068: ASM_RCALL(); goto R_3068; case 3069: ASM_RCALL(); goto R_3069; case 3070: ASM_RCALL(); goto R_3070; case 3071: ASM_RCALL(); goto R_3071; case 3072: ASM_RCALL(); goto R_3072; case 3073: ASM_RCALL(); goto R_3073; case 3074: ASM_RCALL(); goto R_3074; case 3075: ASM_RCALL(); goto R_3075; case 3076: ASM_RCALL(); goto R_3076; case 3077: ASM_RCALL(); goto R_3077; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x1EB63354);
+  if (asm_test_hook) asm_test_hook(0x1EB63354);
   R.cs = 0x16d9;
   ASM_I(0x3354); ASM_BLOCK(19, 0x3354); PUSH(R.bp);            // 3354 push bp
   ASM_I(0x3355); R.bp = (u16)(R.sp);                           // 3355 mov bp, sp
@@ -35046,6 +35048,7 @@ static void a_1eb6_3624(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case 3092: ASM_RCALL(); goto R_3092; case 3093: ASM_RCALL(); goto R_3093; case 3094: ASM_RCALL(); goto R_3094; case 3095: ASM_RDONE(); goto L_364a; case 3096: ASM_RDONE(); goto L_366a; case 3097: ASM_RDONE(); goto L_365f; case 3098: ASM_RDONE(); goto L_375a; case 3099: ASM_RDONE(); goto L_3728; case 3100: ASM_RDONE(); goto L_373a; case 3101: ASM_RCALL(); goto R_3101; case 3102: ASM_RCALL(); goto R_3102; case 3103: ASM_RCALL(); goto R_3103; case 3104: ASM_RDONE(); goto L_381f; case 3105: ASM_RDONE(); goto L_381f; case 3106: ASM_RDONE(); goto L_36fc; case 3107: ASM_RDONE(); goto L_3715; case 3108: ASM_RDONE(); goto L_3715; case 3109: ASM_RCALL(); goto R_3109; case 3110: ASM_RCALL(); goto R_3110; case 3111: ASM_RCALL(); goto R_3111; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x1EB63624);
+  if (asm_test_hook) asm_test_hook(0x1EB63624);
   R.cs = 0x16d9;
   ASM_I(0x3624); ASM_BLOCK(6, 0x3624); PUSH(R.bp);             // 3624 push bp
   ASM_I(0x3625); R.bp = (u16)(R.sp);                           // 3625 mov bp, sp

@@ -1,6 +1,7 @@
 // A machine's state saved after a movie's rows, or loaded and run for some frames (a benchmark, a profile's run):
 //   o4dbBench GAMEDIR save MOVIE OUT     the movie played, its machine saved to OUT
 //   o4dbBench GAMEDIR run STATE FRAMES   STATE loaded, FRAMES frames run with nothing pressed (the time printed)
+//   (the environment's SKIP: o4db_test_hooks's parts skipped; CYCLES: the machine's speed from the state on)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,8 @@ int main(int argc, char **argv)
   if (!f || fread(s, 1, o4db_state_size(), f) != o4db_state_size()) { fprintf(stderr, "o4dbBench: no state in %s\n", argv[3]); return 1; }
   fclose(f);
   o4db_load(s);
+  if (getenv("SKIP")) o4db_test_hooks(NULL, (unsigned)strtoul(getenv("SKIP"), NULL, 0));
+  if (getenv("CYCLES")) o4db_test_set_cycles((uint32_t)strtoul(getenv("CYCLES"), NULL, 10));
   const size_t frames = strtoull(argv[4], NULL, 10);
   O4dbInput *in = calloc(frames, sizeof *in);
   for (size_t k = 0; k < frames; k++) in[k].mouseX = 135, in[k].mouseY = 65;

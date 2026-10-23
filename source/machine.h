@@ -70,9 +70,28 @@ void o4db_load(const void *in);
 // states as the pages of the memory (256 bytes each, at most maxPages) that differ from it, with the rest of the
 // machine. o4db_save_delta answers the pages it took, or -1 when there are more than maxPages (nothing saved).
 int o4db_set_reference(void);
+// Memory no delta holds, process-wide, set before the first delta: the pages from start's to end's (linear addresses),
+// which the game only writes before it reads them (its pictures: the screen, its drawing buffers). A delta loaded
+// leaves there what the thread's memory had.
+void o4db_set_unsaved(uint32_t start, uint32_t end);
 size_t o4db_delta_size(unsigned maxPages);
 int o4db_save_delta(void *out, unsigned maxPages);
 void o4db_load_delta(const void *in, unsigned maxPages);
+
+// (tests) a function called at the entry of each of the fight's events (a boxer's step, 1eb6:3354: fn 0x1EB63354)
+// and of each frame's fight (1eb6:3624: fn 0x1EB63624), and parts of the game skipped (bit 0: the fight's scene not drawn, 1c47:229c), for every machine of the process
+void o4db_test_hooks(void (*eventHook)(uint32_t fn), unsigned skip);
+// (tests) the machine's speed changed where it is (DOSBox's cycles: instructions a millisecond; the setup's 22,000),
+// for every machine of the process: its instruction count rescaled so that its time goes on from here
+void o4db_test_set_cycles(uint32_t cycles);
+// (tests, the trace variant only: the library built with O4DB_TRACE) every read of the program's given to the hook
+// (the address, the value, 1 or 2 bytes), and the reading instruction's CS:IP (CS the program's at its load, 0823)
+void o4db_test_trace_reads(void (*hook)(uint32_t addr, uint16_t value, int size));
+void o4db_test_trace_writes(void (*hook)(uint32_t addr, uint16_t value, int size));  // (the program's writes: string ops too)
+void o4db_test_trace_pre_reads(void (*hook)(uint32_t addr, int size));  // (before each read: the hook may change the memory)
+uint32_t o4db_test_trace_ip(void);
+// (tests) the program's call chain now, wherever it is (o4db_chain's elements: its call sites, 8 bytes each)
+const uint32_t *o4db_test_chain(int *depth);
 
 // What the machine shows and holds
 uint8_t *o4db_memory(void);                // the megabyte (and the 64 KB past it)

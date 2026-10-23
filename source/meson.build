@@ -23,3 +23,15 @@ quickerOpen4DBoxingDependency = declare_dependency(
   include_directories : include_directories('.'),
   dependencies : [ dependency('threads') ],
 )
+
+# (tests: the same machine whose program's reads are traced, machine.h's o4db_test_trace_reads)
+quickerOpen4DBoxingTraceLib = static_library('quickerOpen4DBoxingTrace', quickerOpen4DBoxingSources,
+  c_args : [ '-Wfatal-errors', '-Wall', '-Wno-unused-label', '-ftls-model=initial-exec', '-DO4DB_TRACE' ],
+  include_directories : quickerOpen4DBoxingIncludes,
+  build_by_default : false,
+)
+quickerOpen4DBoxingTraceDependency = declare_dependency(
+  link_whole : quickerOpen4DBoxingTraceLib,
+  include_directories : include_directories('.'),
+  dependencies : [ dependency('threads') ],
+)

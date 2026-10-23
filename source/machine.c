@@ -361,6 +361,31 @@ void o4db_load(const void *in)
 #define PAGES (sizeof g_mem / PAGE)
 static pthread_mutex_t referenceLock = PTHREAD_MUTEX_INITIALIZER;
 static uint8_t *reference;  // the process's (every machine's states are deltas from the same memory)
+static uint8_t unsaved[PAGES];  // pages no delta holds (o4db_set_unsaved)
+static struct { uint16_t first, end; } savedRuns[PAGES / 2 + 1] = { { 0, PAGES } };  // the others, as runs of pages
+static unsigned nSavedRuns = 1;
+
+void o4db_set_unsaved(uint32_t start, uint32_t end)
+{
+  // (every thread's machine sets the same: only the first changes anything)
+  pthread_mutex_lock(&referenceLock);
+  int changed = 0;
+  for (uint32_t p = start / PAGE; p <= end / PAGE && p < PAGES; p++)
+    if (!unsaved[p]) unsaved[p] = 1, changed = 1;
+  if (changed)
+  {
+    unsigned n = 0;
+    for (unsigned p = 0; p < PAGES;)
+    {
+      if (unsaved[p]) { p++; continue; }
+      savedRuns[n].first = (uint16_t)p;
+      while (p < PAGES && !unsaved[p]) p++;
+      savedRuns[n++].end = (uint16_t)p;
+    }
+    nSavedRuns = n;
+  }
+  pthread_mutex_unlock(&referenceLock);
+}
 
 int o4db_set_reference(void)
 {
@@ -372,7 +397,7 @@ int o4db_set_reference(void)
     memcpy(reference, g_mem, sizeof g_mem);
   }
   else
-    for (size_t p = 0; p < PAGES; p++) differ += memcmp(reference + p * PAGE, g_mem + p * PAGE, PAGE) != 0;
+    for (size_t p = 0; p < PAGES; p++) differ += !unsaved[p] && memcmp(reference + p * PAGE, g_mem + p * PAGE, PAGE) != 0;
   pthread_mutex_unlock(&referenceLock);
   return differ;
 }
@@ -398,14 +423,15 @@ int o4db_save_delta(void *out, unsigned maxPages)
   uint16_t *count = (uint16_t *)p, *index = count + 1;
   uint8_t *pages = (uint8_t *)(index + maxPages);
   unsigned n = 0;
-  for (size_t k = 0; k < PAGES; k++)
-    if (memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
-    {
-      if (n == maxPages) return -1;
-      index[n] = (uint16_t)k;
-      memcpy(pages + (size_t)n * PAGE, g_mem + k * PAGE, PAGE);
-      n++;
-    }
+  for (unsigned r = 0; r < nSavedRuns; r++)
+    for (size_t k = savedRuns[r].first; k < savedRuns[r].end; k++)
+      if (memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
+      {
+        if (n == maxPages) return -1;
+        index[n] = (uint16_t)k;
+        memcpy(pages + (size_t)n * PAGE, g_mem + k * PAGE, PAGE);
+        n++;
+      }
   *count = (uint16_t)n;
   memset(index + n, 0, sizeof *index * (maxPages - n));
   memset(pages + (size_t)n * PAGE, 0, (size_t)PAGE * (maxPages - n));
@@ -425,8 +451,44 @@ void o4db_load_delta(const void *in, unsigned maxPages)
   o4db_state_all(load_rest, &p);
   const uint16_t *count = (const uint16_t *)p, *index = count + 1;
   const uint8_t *pages = (const uint8_t *)(index + maxPages);
-  memcpy(g_mem, reference, sizeof g_mem);
+  for (unsigned r = 0; r < nSavedRuns; r++)
+    memcpy(g_mem + (size_t)savedRuns[r].first * PAGE, reference + (size_t)savedRuns[r].first * PAGE, (size_t)(savedRuns[r].end - savedRuns[r].first) * PAGE);
   for (unsigned k = 0; k < *count; k++) memcpy(g_mem + (size_t)index[k] * PAGE, pages + (size_t)k * PAGE, PAGE);
+}
+
+void (*asm_test_hook)(u32 fn);
+unsigned asm_test_skip;
+#ifdef O4DB_TRACE
+u32 asm_trace_ip;
+void (*asm_trace_read)(u32 addr, u16 value, int size);
+void (*asm_trace_write)(u32 addr, u16 value, int size);
+void (*asm_trace_pre_read)(u32 addr, int size);
+void o4db_test_trace_pre_reads(void (*hook)(uint32_t addr, int size)) { asm_trace_pre_read = hook; }
+void o4db_test_trace_reads(void (*hook)(uint32_t addr, uint16_t value, int size)) { asm_trace_read = hook; }
+void o4db_test_trace_writes(void (*hook)(uint32_t addr, uint16_t value, int size)) { asm_trace_write = hook; }
+uint32_t o4db_test_trace_ip(void) { return asm_trace_ip; }
+#endif
+void o4db_test_hooks(void (*eventHook)(uint32_t fn), unsigned skip)
+{
+  asm_test_hook = eventHook;
+  asm_test_skip = skip;
+}
+
+void o4db_test_set_cycles(uint32_t cycles)
+{
+  asm_icount = asm_icount * cycles / host.cycles;
+  asm_waits = asm_waits * cycles / host.cycles;
+  host.cycles = cycles;
+  asm_ioCostIn = (u32)((uint64_t)cycles * 1020 / 1000000);
+  asm_ioCostOut = (u32)((uint64_t)cycles * 1020 * 3 / 4000000);
+  asm_ioCostIn16 = (u32)((uint64_t)cycles * 660 / 1000000);
+  asm_ioCostOut16 = (u32)((uint64_t)cycles * 660 * 3 / 4000000);
+}
+
+const uint32_t *o4db_test_chain(int *depth)
+{
+  *depth = asm_sdepth;
+  return (const uint32_t *)asm_shadow;
 }
 
 uint8_t *o4db_memory(void) { return g_mem; }
