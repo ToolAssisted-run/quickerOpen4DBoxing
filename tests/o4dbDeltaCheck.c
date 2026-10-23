@@ -93,6 +93,8 @@ static void *replay(void *arg)
     const int pages = o4db_save_delta(deltas + k * deltaSize, maxPages);
     if (pages < 0) { fprintf(stderr, "o4dbDeltaCheck: step %zu's state has more than %u pages\n", k, maxPages); exit(1); }
     if (pages > most) most = pages;
+    // (PAGES_EVERY: the delta's pages printed every that many steps)
+    if (getenv("PAGES_EVERY") && k % strtoull(getenv("PAGES_EVERY"), NULL, 10) == 0) printf("step %zu: %d pages\n", k, pages);
     o4db_step(&steps[k]);
     memcpy(seq + k * (size_t)MEM, o4db_memory(), MEM);
   }
