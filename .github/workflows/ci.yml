@@ -1,0 +1,31 @@
+name: CI
+
+# Builds the machine and its tests, and checks that source/generated is what tools/generate.py makes from the
+# Open4DBoxing submodule. The movie tests need the game's floppies (not public): run them where they are.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends meson ninja-build cmake pkg-config python3 libsdl2-dev
+    - name: The generated sources are up to date
+      run: |
+        python3 tools/generate.py
+        git diff --exit-code source/generated
+    - name: Build
+      run: |
+        meson setup build
+        meson compile -C build
+        meson compile -C build tests/o4dbFrameFree
