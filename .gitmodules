@@ -1,0 +1,6 @@
+[submodule "extern/Open4DBoxing"]
+	path = extern/Open4DBoxing
+	url = https://github.com/ToolAssisted-run/Open4DBoxing.git
+[submodule "extern/jaffarCommon"]
+	path = extern/jaffarCommon
+	url = https://github.com/ToolAssisted-run/jaffarCommon.git
