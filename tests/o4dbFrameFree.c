@@ -53,13 +53,18 @@ static void pre_read_hook(uint32_t addr, int size)
   if (nMimic[1] < nMimic[0]) { const uint16_t v = mimicValues[nMimic[1]++]; m[addr] = (uint8_t)v; m[addr + 1] = (uint8_t)(v >> 8); }
 }
 static uint32_t watchIp;  // (WATCHIP: the reads of the instruction there listed, Ghidra's CS:IP)
+static uint32_t lastWriterIp;
+static int16_t lastWriterValue;
+static int sawWrite;
+static unsigned framesSinceLastWrite;  // (the game frames since the slot's last write, at a read)
 static void read_hook(uint32_t addr, uint16_t value, int size)
 {
   if (watchIp && run >= 0)
   {
     const uint32_t ip = o4db_test_trace_ip();
     if (((((ip >> 16) + 0x1000 - 0x823) & 0xFFFF) << 16 | (ip & 0xFFFF)) == watchIp)
-      printf("  (%s, event %zu, frame %llu: [%05X] = %04X)\n", run ? "not drawn" : "drawn", nLog[run], (unsigned long long)o4db_frames(), addr, value);
+      printf("  (%s, event %zu, frame %llu: [%05X] = %04X, last written by %04X:%04X %u game frames before)\n", run ? "not drawn" : "drawn", nLog[run],
+             (unsigned long long)o4db_frames(), addr, value, lastWriterIp >> 16, lastWriterIp & 0xFFFF, framesSinceLastWrite);
   }
   if (!tracing || run < 0) return;
   if (nReads[run] == capReads[run]) reads[run] = realloc(reads[run], (capReads[run] = capReads[run] ? 2 * capReads[run] : 65536) * sizeof(Read));
@@ -68,21 +73,20 @@ static void read_hook(uint32_t addr, uint16_t value, int size)
 
 static size_t firstLong[2];
 static uint16_t slotOff;
-// (SLOTWRITERS: the last writer of the slot in each frame, counted by its CS:IP)
+// (SLOT: the last writer of the slot at each frame's start, counted by its CS:IP)
 typedef struct { uint32_t ip; unsigned n; int16_t minV, maxV; } Writer;
 static Writer writers[256];
 static int nWriters;
-static uint32_t lastWriterIp;
-static int16_t lastWriterValue;
-static int sawWrite;
 static void write_hook(uint32_t addr, uint16_t value, int size)
 {
+  (void)value;
   const uint32_t slot = ((uint32_t)o4db_data_segment() << 4) + slotOff;
   if (run != 0 || addr + (uint32_t)size <= slot || addr > slot + 1) return;
   const uint32_t ip = o4db_test_trace_ip();
   lastWriterIp = ((((ip >> 16) + 0x1000 - 0x823) & 0xFFFF) << 16) | (ip & 0xFFFF);
   lastWriterValue = (int16_t)dw(slotOff);
   sawWrite = 1;
+  framesSinceLastWrite = 0;
 }
 typedef struct { int16_t v; unsigned n; } SlotValue;
 static SlotValue slotValues[2][4096];
@@ -96,6 +100,7 @@ static void event_hook(uint32_t fn)
   tracing = fn == 0x1EB63354 && (long long)nLog[run] == traceEvent;
   if (fn == 0x1EB63624)
   {
+    framesSinceLastWrite++;
     while (pokesDone < pokesDue) pokes_apply(++pokesDone);
     if (nLog[run] < (1 << 16)) frameBetween[run][nLog[run]]++;
     // (SLOT=OFF: the data segment's word there at each frame's start, counted by value)

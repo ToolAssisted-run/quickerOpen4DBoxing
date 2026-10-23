@@ -346,6 +346,14 @@ void asm_step_mark(void);  // (machine.c)
 // (tests: machine.c's o4db_test_hooks)
 extern void (*asm_test_hook)(u32 fn);
 extern unsigned asm_test_skip;
+// the fight's logic alone (machine.c's o4db_set_fast): the frames' driver's entry, the scene's drawing skipped, the
+// miss path's read of its uninitialized local
+#define ASM_FAST_SITE 999999
+extern O4DB_TLS int asm_fast, asm_skip_draw;
+void asm_fast_frame(void);
+void asm_fast_tick(void);
+void asm_fast_miss(void);
+void asm_fast_wait(void);
 
 // every instruction (ASM_I, before it) and every repetition of a repeated string instruction (ASM_REP_CHECK): in the
 // replay variant (ASM_REPLAY, replay.h) the program's instruction count, the oracle's interrupts and frame ends at

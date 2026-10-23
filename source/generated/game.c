@@ -380,6 +380,13 @@ static void pic_deliver(void)
   }
 }
 
+uint64_t game_next_event(void)
+{
+  const uint64_t t = pit_next_irq(lastIrq);
+  return t < nextFrame ? t : nextFrame;
+}
+uint32_t game_cycles(void) { return host->cycles; }
+
 // time passes: the timer's interrupts, the keys, the frames
 void asm_back_slow(void)
 {

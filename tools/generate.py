@@ -191,6 +191,17 @@ def patch(name, text):
   pthread_mutex_unlock(&disksLock);
 """)
         text = must_sub(name, text, "static DosFile *diskFiles;", "static DosFile *diskFiles;\nstatic pthread_mutex_t disksLock = PTHREAD_MUTEX_INITIALIZER;")
+        # (machine.c's fast fight: the time of the next thing that happens, the timer's interrupt or a frame's end, in
+        # PIT ticks, and the machine's speed, for time to go to it)
+        text = must_sub(name, text, "// time passes: the timer's interrupts, the keys, the frames\n", """uint64_t game_next_event(void)
+{
+  const uint64_t t = pit_next_irq(lastIrq);
+  return t < nextFrame ? t : nextFrame;
+}
+uint32_t game_cycles(void) { return host->cycles; }
+
+// time passes: the timer's interrupts, the keys, the frames
+""")
         text = must_sub(name, text, "#include <setjmp.h>\n", "#include <pthread.h>\n#include <setjmp.h>\n")
         # game_run in two: the setup (the thread's machine made ready: its hooks, DOS, the program loaded) and the start
         text = must_sub(name, text, "int game_run(const GameHost *h)\n{\n  host = h;", "int game_setup(const GameHost *h)\n{\n  host = h;")
@@ -298,6 +309,14 @@ void asm_step_mark(void);  // (machine.c)
 // (tests: machine.c's o4db_test_hooks)
 extern void (*asm_test_hook)(u32 fn);
 extern unsigned asm_test_skip;
+// the fight's logic alone (machine.c's o4db_set_fast): the frames' driver's entry, the scene's drawing skipped, the
+// miss path's read of its uninitialized local
+#define ASM_FAST_SITE 999999
+extern O4DB_TLS int asm_fast, asm_skip_draw;
+void asm_fast_frame(void);
+void asm_fast_tick(void);
+void asm_fast_miss(void);
+void asm_fast_wait(void);
 """
 
 MCGA_ACCESS = r"""// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's; the tests' trace variant, O4DB_TRACE,
@@ -412,6 +431,27 @@ def resume_transform(text):
     text = must_sub("box_core.c", text, "  FN(0x1EB63354);\n", "  FN(0x1EB63354);\n  if (asm_test_hook) asm_test_hook(0x1EB63354);\n")
     text = must_sub("box_core.c", text, "  FN(0x1EB63624);\n", "  FN(0x1EB63624);\n  if (asm_test_hook) asm_test_hook(0x1EB63624);\n")
     text = must_sub("box_core.c", text, "  FN(0x1C47229C);\n", "  FN(0x1C47229C);\n  if (asm_test_skip & 1) { R.sp += 4; return; }\n")
+    # the fight's logic alone (machine.c's o4db_set_fast): at the frames' driver's entry (2550:02ac) the tick's start,
+    # at its end time to the timer's next tick when none is due, and the step's stop there if that tick read the
+    # controls (a resume site of its own); the scene not drawn (1c47:229c); the miss path's read of its uninitialized
+    # local checked (1eb6:19fa at 1e84, [bp - 0x12])
+    text = must_sub("box_core.c", text, "static void a_2550_02ac(void)\n{\n  if (asm_resuming) switch (ASM_RSITE()) { ",
+                    "static void a_2550_02ac(void)\n{\n  if (asm_resuming) switch (ASM_RSITE()) { case ASM_FAST_SITE: ASM_RDONE(); goto L_fast_exit; ")
+    text = must_sub("box_core.c", text, "  FN(0x255002AC);\n", "  FN(0x255002AC);\n  if (asm_fast) asm_fast_tick();\n")
+    text = must_sub("box_core.c", text, "L_0527:   ASM_I(0x0527); ASM_BLOCK(5, 0x0527); R.si = POP();",
+                    "L_0527:   if (asm_fast) { asm_fast_frame(); ASM_YIELD_CHECK(ASM_FAST_SITE); }\nL_fast_exit:   ASM_I(0x0527); ASM_BLOCK(5, 0x0527); R.si = POP();")
+    text = must_sub("box_core.c", text, "  if (asm_test_skip & 1) { R.sp += 4; return; }\n",
+                    "  if (asm_test_skip & 1) { R.sp += 4; return; }\n  if (asm_skip_draw) { R.sp += 4; return; }\n")
+    text = must_sub("box_core.c", text, "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); PUSH(M16(SS, (u16)(R.bp + 0xffee)));",
+                    "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_fast) asm_fast_miss(); PUSH(M16(SS, (u16)(R.bp + 0xffee)));")
+    # (and the busy waits on the timer's count, 2afc:385d's and 2afc:388b's loops: time to the timer's next interrupt)
+    for fn, back in (("a_2afc_385d", "0x385d"), ("a_2afc_388b", "0x38a2")):
+        start = text.index(f"static void {fn}(void)\n{{\n")
+        end = text.index("\n}\n", start)
+        body = text[start:end]
+        if body.count(f"ASM_BACK({back}); ") != 2:
+            raise SystemExit(f"generate: {fn}'s loop is not the expected one")
+        text = text[:start] + body.replace(f"ASM_BACK({back}); ", f"ASM_BACK({back}); if (asm_fast) asm_fast_wait(); ") + text[end:]
     return text, stats
 
 

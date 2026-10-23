@@ -15,12 +15,15 @@
 #include "generated/dos.h"
 #include "generated/game.h"
 #include "generated/state.h"
+#include "generated/pit.h"
 
 // --------------------------------------------------------------------------------------------------- the setup
 
 static O4DB_TLS GameHost host;
 static O4DB_TLS char gameDir[1024], writeDir[1024], cmdline[32], errorText[1024];
 static O4DB_TLS int setupDone;
+static uint32_t setupCycles = 22000;  // the machine's speed (o4db_set_speed)
+void o4db_set_speed(uint32_t cycles) { setupCycles = cycles ? cycles : 22000; }
 
 static const struct { const char *id, *driver; } k_sounds[] = {
   { "mt32", "mt15.drv" }, { "sb", "sb15.drv" }, { "adlib", "ad15.drv" }, { "speaker", "pc15.drv" }, { "tandy", "td15.drv" },
@@ -97,8 +100,9 @@ int o4db_setup(const char *dir, const char *sound, const char *clockStart, const
     made[madeCount++] = strdup(writeDir);
     pthread_mutex_unlock(&madeLock);
   }
-  // as Chimera's core sets the game up (boxing-driver.c's boxdrv_init): the MCGA build, 22,000 instructions a
-  // millisecond, the clock's start; no MT-32 to play the MIDI to (the game's run does not depend on it)
+  // as Chimera's core sets the game up (boxing-driver.c's boxdrv_init): the MCGA build, the machine's speed
+  // (o4db_set_speed: 22,000 instructions a millisecond, the oracle's 486, by default), the clock's start; no MT-32 to
+  // play the MIDI to (the game's run does not depend on it)
   host = (GameHost){
     .gameDir = gameDir,
     .writeDir = writeDir,
@@ -107,7 +111,7 @@ int o4db_setup(const char *dir, const char *sound, const char *clockStart, const
     .frame = host_frame,
     .midi = NULL,
     .ctx = NULL,
-    .cycles = 22000,
+    .cycles = setupCycles,
     .startTime = start,
   };
   setupDone = 1;
@@ -124,6 +128,9 @@ typedef struct
   O4dbInput boot;
   int32_t booted, exited, exitCode;
   uint64_t frames;  // frame ends passed
+  // (the fast fight: whole frames to draw before a tick held back, the tick's time, the frame in progress drawn)
+  int32_t fastFullFrames, fastDraw;
+  uint16_t fastHeldTime, fastPad;
 } Machine;
 static O4DB_TLS Machine M;
 
@@ -152,6 +159,7 @@ void o4db_new(const O4dbInput *boot)
   else
     o4db_load_pristine();
   memset(&M, 0, sizeof M);
+  asm_fast = asm_skip_draw = 0;  // (a new machine plays the whole game: o4db_set_fast after its start)
   M.boot = boot ? *boot : (O4dbInput){ 0, O4DB_MOUSE_X_NEUTRAL, O4DB_MOUSE_Y_NEUTRAL };
   M.given[0] = O4DB_MOUSE_X_NEUTRAL;
   M.given[1] = O4DB_MOUSE_Y_NEUTRAL;
@@ -252,9 +260,204 @@ void asm_yield(u32 site)
 
 uint64_t o4db_run(const O4dbInput *inputs, size_t n) { return o4db_run_ahead(inputs, n, n); }
 
+// ------------------------------------------------------------------------- the fight's logic alone (o4db_set_fast)
+// The fight's logic depends on the drawing only through the time the drawing takes and one bug of the game's. At a
+// speed where every frame fits in one of the timer's 10 ms ticks (220,000 instructions a millisecond), the time does
+// not matter: the boxers' steps are the ticks', and the frames between two ticks have nothing to do. So the fast
+// machine draws no scene, and at the frames' driver's entry (2550:02ac) with no tick due it lets time go to the next
+// one, event by event (the frame ends with their inputs, the keys, the timer's interrupts, in their order). The bug:
+// a punch that misses (1eb6:19fa's miss path) takes the defender's stamina by a local never set ([bp - 0x12]): the
+// stack's garbage there, left by the game's last whole frame (its drawing, its displays) or by that tick's own
+// logic. The fast machine fills the stack below each tick's frame with a sentinel; when a miss finds it, the step is
+// run again from its start with that tick held back for two whole frames (drawn, as the game draws between its
+// ticks), which leave the game's garbage. (What a timer or key interrupt in the middle of the game's drawing leaves
+// there is not reproduced: the game's interrupts land where its drawing's instructions put them.)
+#define FAST_SENTINEL 0xDEAD
+#define FAST_FILL 3072        // (bytes of the stack below the frames' driver: 1eb6:19fa's local is 0xCE below)
+#define DS_ELAPSED 0xCEF6     // the timer's milliseconds not yet taken by a frame (25bb:02b8 adds 10 a tick)
+#define DS_TICKS 0xCF4A       // the timer's ticks (25bb:02b8's count)
+#define DS_HW_TICKS 0x690E    // the timer's interrupts (2afc:0ec9's count)
+O4DB_TLS int asm_fast, asm_skip_draw;
+static O4DB_TLS uint16_t replayTicks[32];
+static O4DB_TLS uint8_t replayDone[32];
+static O4DB_TLS int nReplay, missAbort;
+static O4DB_TLS uint64_t fastReplays;
+static O4DB_TLS uint8_t *kept;  // the step's start, for its replays: a delta (keptPages) or a whole state
+static O4DB_TLS size_t keptCap;
+static O4DB_TLS int keptKind;   // 0 none, 1 a delta, 2 a whole state
+static O4DB_TLS unsigned keptPages;
+extern uint64_t game_next_event(void);
+extern uint32_t game_cycles(void);
+
+static uint16_t ds_word(uint16_t off) { const uint8_t *d = g_mem + ((uint32_t)g_dsSeg << 4) + off; return (uint16_t)(d[0] | d[1] << 8); }
+static void ds_set(uint16_t off, uint16_t v) { uint8_t *d = g_mem + ((uint32_t)g_dsSeg << 4) + off; d[0] = (uint8_t)v; d[1] = (uint8_t)(v >> 8); }
+static int replay_index(uint16_t tick)
+{
+  for (int k = 0; k < nReplay; k++)
+    if (replayTicks[k] == tick) return k;
+  return -1;
+}
+
+// the frames' driver's end, before its stop: with no tick due (and no whole frames pending), time to the timer's next
+// tick (its interrupt handler, 2afc:0ec9, counts them at DS:690E; the game's callback, 25bb:02b8, at DS:CF4A and adds
+// the tick's 10 ms to DS:CEF6 unless the game is paused), event by event, as the game's interrupt lands in its
+// frame's drawing: after the frame's logic took its time, before the caller's checks
+// (the callers whose frames loop until a tick's checks, by their return addresses, CS 095E as loaded: the round's
+// loop, 113b:0776's call of 113b:28e4 (returning to 0ac7) and its frame (the one view's, returning to 29b9), and the
+// bell's waits, 113b:06a0's two "while (!2afc:3871()) frame" loops (06db, 075d); elsewhere a frame may be followed
+// by a wait of its own, 113b:06a0's ring before 2afc:385d, 113b:0776's frame before 2afc:388b's 400 ms, and goes as
+// the game's. The frames' driver's return address is above its BP, its caller's above the BP it saved)
+static uint16_t stack_word(uint16_t a) { const uint8_t *stack = g_mem + ((uint32_t)R.ss << 4); return (uint16_t)(stack[a] | stack[(uint16_t)(a + 1)] << 8); }
+static int fast_forward_caller(void)
+{
+  if (stack_word((uint16_t)(R.bp + 4)) != 0x095E) return 0;
+  const uint16_t ip = stack_word((uint16_t)(R.bp + 2));
+  if (ip == 0x06DB || ip == 0x075D) return 1;
+  if (ip != 0x29B9) return 0;
+  const uint16_t bp = stack_word(R.bp);
+  return stack_word((uint16_t)(bp + 4)) == 0x095E && stack_word((uint16_t)(bp + 2)) == 0x0AC7;
+}
+
+void asm_fast_frame(void)
+{
+  if (M.fastFullFrames > 0 || ds_word(DS_ELAPSED) != 0 || !fast_forward_caller()) return;
+  const uint32_t cycles = game_cycles();
+  const uint16_t hw = ds_word(DS_HW_TICKS), ticks = ds_word(DS_TICKS);
+  for (int guard = 0; ds_word(DS_HW_TICKS) == hw && ds_word(DS_TICKS) == ticks && !asm_yield_req && R.if_; guard++)
+  {
+    const uint64_t t = game_next_event();
+    if (t == UINT64_MAX || guard > 64) break;
+    const uint64_t ic = (t * cycles * 1000 + PIT_HZ - 1) / PIT_HZ;
+    if (ic > asm_icount) { asm_waits += ic - asm_icount; asm_icount = ic; }
+    asm_back_slow();
+  }
+}
+
+// a busy wait on the timer's count (2afc:385d's and 2afc:388b's loops): nothing changes until the timer's next
+// interrupt, so time goes to it, event by event
+void asm_fast_wait(void)
+{
+  const uint32_t cycles = game_cycles();
+  const uint16_t hw = ds_word(DS_HW_TICKS);
+  for (int guard = 0; ds_word(DS_HW_TICKS) == hw && !asm_yield_req && R.if_ && guard < 64; guard++)
+  {
+    const uint64_t t = game_next_event();
+    if (t == UINT64_MAX) break;
+    const uint64_t ic = (t * cycles * 1000 + PIT_HZ - 1) / PIT_HZ;
+    if (ic > asm_icount) { asm_waits += ic - asm_icount; asm_icount = ic; }
+    asm_back_slow();
+  }
+}
+
+// the frames' driver's entry: the frame's drawing, a tick's start (the sentinel; a replay's whole frames first)
+void asm_fast_tick(void)
+{
+  if (M.fastFullFrames > 0)
+  {
+    if (--M.fastFullFrames > 0) { M.fastDraw = 1; asm_skip_draw = 0; return; }
+    // the whole frames drawn: the tick held back is the frame's
+    ds_set(DS_ELAPSED, M.fastHeldTime);
+    M.fastDraw = 0;
+    asm_skip_draw = 1;
+    return;
+  }
+  M.fastDraw = 0;
+  asm_skip_draw = 1;
+  if (ds_word(DS_ELAPSED) == 0) return;
+  const int k = replay_index(ds_word(DS_TICKS));
+  if (k >= 0)
+  {
+    if (replayDone[k]) return;
+    // a replay's tick: held back for two whole frames (the game's frames between ticks, their garbage)
+    replayDone[k] = 1;
+    M.fastHeldTime = ds_word(DS_ELAPSED);
+    ds_set(DS_ELAPSED, 0);
+    M.fastFullFrames = 2;
+    M.fastDraw = 1;
+    asm_skip_draw = 0;
+    return;
+  }
+  uint8_t *stack = g_mem + ((uint32_t)R.ss << 4);
+  for (uint32_t a = (uint32_t)R.sp - FAST_FILL; a + 1 < R.sp; a += 2)
+  {
+    stack[(uint16_t)a] = (uint8_t)FAST_SENTINEL;
+    stack[(uint16_t)(a + 1)] = (uint8_t)(FAST_SENTINEL >> 8);
+  }
+}
+
+// 1eb6:19fa's miss path about to read its local [bp - 0x12]: the sentinel there is no garbage of the game's (the step
+// again, the tick with whole frames before it)
+void asm_fast_miss(void)
+{
+  const uint8_t *stack = g_mem + ((uint32_t)R.ss << 4);
+  const uint16_t a = (uint16_t)(R.bp - 0x12);
+  if ((stack[a] | stack[(uint16_t)(a + 1)] << 8) != FAST_SENTINEL) return;
+  const uint16_t tick = ds_word(DS_TICKS);
+  if (replay_index(tick) >= 0) return;  // (a replay's tick: the game's garbage, the sentinel's value by chance)
+  if (nReplay == (int)(sizeof replayTicks / sizeof *replayTicks))
+  {
+    fprintf(stderr, "quickerOpen4DBoxing: more than %d missed punches in a step\n", nReplay);
+    abort();
+  }
+  replayTicks[nReplay] = tick;
+  replayDone[nReplay] = 0;
+  nReplay++;
+  missAbort = 1;
+  longjmp(yieldJump, 1);
+}
+
+static void keep(const void *state, size_t size, int kind, unsigned pages)
+{
+  if (state == kept) return;
+  if (size > keptCap) kept = realloc(kept, keptCap = size);
+  memcpy(kept, state, size);
+  keptKind = kind;
+  keptPages = pages;
+}
+
+void o4db_set_fast(int on)
+{
+  asm_fast = on;
+  asm_skip_draw = on && !M.fastDraw;
+}
+uint64_t o4db_fast_replays(void) { return fastReplays; }
+
+static uint64_t fast_step(const O4dbInput *input)
+{
+  if (!keptKind)
+  {
+    // (a step not after a load: the machine's own copy of its state)
+    if (o4db_state_size() > keptCap) kept = realloc(kept, keptCap = o4db_state_size());
+    o4db_save(kept);
+    keptKind = 2;
+  }
+  nReplay = 0;
+  for (int attempt = 0;; attempt++)
+  {
+    if (attempt)
+    {
+      if (keptKind == 1) o4db_load_delta(kept, keptPages);
+      else o4db_load(kept);
+      if (asm_test_hook) asm_test_hook(0xFFFFFFFF);  // (tests: the step's events again)
+      fastReplays++;
+    }
+    for (int k = 0; k < nReplay; k++) replayDone[k] = 0;
+    missAbort = 0;
+    stepping = 1;
+    const uint64_t f = o4db_run_ahead(input, 1, 1);
+    stepping = 0;
+    if (!missAbort)
+    {
+      keptKind = 0;
+      return f;
+    }
+  }
+}
+
 uint64_t o4db_step(const O4dbInput *input)
 {
   if (!stepFn) return o4db_run(input, 1);
+  if (asm_fast) return fast_step(input);
   stepping = 1;
   const uint64_t f = o4db_run_ahead(input, 1, 1);
   stepping = 0;
@@ -270,6 +473,7 @@ uint64_t o4db_run_ahead(const O4dbInput *inputs, size_t n, size_t avail)
   runAvail = avail;
   runIndex = 0;
   asm_yield_req = 0;
+  asm_skip_draw = asm_fast && !M.fastDraw;
   if (!setjmp(yieldJump))
   {
     int code;
@@ -349,6 +553,7 @@ void o4db_load(const void *in)
     game_setup(&host);
     threadReady = 1;
   }
+  if (asm_fast) keep(in, o4db_state_size(), 2, 0);
   const uint8_t *p = in;
   memcpy(&M, p, sizeof M);
   p += sizeof M;
@@ -397,7 +602,19 @@ int o4db_set_reference(void)
     memcpy(reference, g_mem, sizeof g_mem);
   }
   else
-    for (size_t p = 0; p < PAGES; p++) differ += !unsaved[p] && memcmp(reference + p * PAGE, g_mem + p * PAGE, PAGE) != 0;
+    for (size_t p = 0; p < PAGES; p++)
+      if (!unsaved[p] && memcmp(reference + p * PAGE, g_mem + p * PAGE, PAGE) != 0)
+      {
+        // (the environment's O4DB_REFERENCE_DIFF: the pages that differ listed)
+        if (differ < 64 && getenv("O4DB_REFERENCE_DIFF"))
+        {
+          size_t first = 0;
+          while (reference[p * PAGE + first] == g_mem[p * PAGE + first]) first++;
+          fprintf(stderr, "quickerOpen4DBoxing: page %05zX differs from the reference (first at %05zX: %02X, the reference's %02X)\n", p * PAGE,
+                  p * PAGE + first, g_mem[p * PAGE + first], reference[p * PAGE + first]);
+        }
+        differ++;
+      }
   pthread_mutex_unlock(&referenceLock);
   return differ;
 }
@@ -445,6 +662,7 @@ void o4db_load_delta(const void *in, unsigned maxPages)
     game_setup(&host);
     threadReady = 1;
   }
+  if (asm_fast) keep(in, o4db_delta_size(maxPages), 1, maxPages);
   const uint8_t *p = in;
   memcpy(&M, p, sizeof M);
   p += sizeof M;

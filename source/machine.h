@@ -37,9 +37,13 @@ typedef struct
 // /dev/shm). 0 on failure, the reason in o4db_error().
 int o4db_setup(const char *gameDir, const char *sound, const char *clockStart, const char *writeDir);
 const char *o4db_error(void);
+// The machine's speed (before o4db_setup, for every machine of the process): DOSBox's cycles, instructions a
+// millisecond (22,000 by default: the oracle's 486). The game's frames all fit in a 10 ms tick of its timer at
+// 220,000, where its fight goes the same whether drawn or not (o4db_set_fast)
+void o4db_set_speed(uint32_t cycles);
 
 // A new machine, not started: its first run starts it with boot (the inputs before the program starts: Chimera's
-// first step's)
+// first step's); it plays the whole game (o4db_set_fast off)
 void o4db_new(const O4dbInput *boot);
 
 // Runs the inputs (n >= 1); the frame ends passed (n or more: see above). 0 once the program has ended.
@@ -59,6 +63,15 @@ void o4db_set_step_function(uint32_t fn, unsigned maxFrames);
 uint64_t o4db_step(const O4dbInput *input);
 // Entries of the step function so far (a step that passes none of them is the game not reading its controls)
 uint64_t o4db_step_function_entries(void);
+
+// The fight's logic alone (the thread's machine; not part of its state): no scene drawn, and time going to the
+// timer's next tick when the game's frames have nothing to do; a step that meets the game's bug (a missed punch's
+// uninitialized local: the stack's garbage of the game's last whole frame) is run again from its start with whole
+// frames before that tick (the step's start: the state last loaded, else the machine's own copy). Its steps are the
+// game's at a speed where every frame fits in a tick (o4db_set_speed: 220,000), but for what a timer or key
+// interrupt in the middle of the game's drawing leaves on the stack; replays: the steps run again so far
+void o4db_set_fast(int on);
+uint64_t o4db_fast_replays(void);
 
 // The machine's state: its size, a copy of it, the state taken back (on any thread with the same setup)
 size_t o4db_state_size(void);

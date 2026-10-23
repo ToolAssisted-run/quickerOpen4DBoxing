@@ -28967,6 +28967,7 @@ static void a_1c47_229c(void)
   if (asm_resuming) switch (ASM_RSITE()) { case 2777: ASM_RCALL(); goto R_2777; case 2778: ASM_RCALL(); goto R_2778; case 2779: ASM_RDONE(); goto L_2337; case 2780: ASM_RCALL(); goto R_2780; case 2781: ASM_RDONE(); goto L_23a3; case 2782: ASM_RCALL(); goto R_2782; case 2783: ASM_RCALL(); goto R_2783; case 2784: ASM_RDONE(); goto L_2365; case 2785: ASM_RDONE(); goto L_2407; case 2786: ASM_RDONE(); goto L_22b6; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x1C47229C);
   if (asm_test_skip & 1) { R.sp += 4; return; }
+  if (asm_skip_draw) { R.sp += 4; return; }
   R.cs = 0x146a;
   ASM_I(0x229c); ASM_BLOCK(5, 0x229c); PUSH(R.bp);             // 229c push bp
   ASM_I(0x229d); R.bp = (u16)(R.sp);                           // 229d mov bp, sp
@@ -32536,7 +32537,7 @@ L_1e6c:   ASM_I(0x1e6c); ASM_BLOCK(5, 0x1e6c); PUSH(R.ax);             // 1e6c p
   ASM_I(0x1e7f); R.sp = (u16)(R.bp);                           // 1e7f mov sp, bp
   ASM_I(0x1e81); R.bp = POP();                                 // 1e81 pop bp
   ASM_I(0x1e82); R.sp += 4; goto L_ret;                        // 1e82 retf
-L_1e84:   ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); PUSH(M16(SS, (u16)(R.bp + 0xffee))); // 1e84 push word ptr [bp - 0x12]
+L_1e84:   ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_fast) asm_fast_miss(); PUSH(M16(SS, (u16)(R.bp + 0xffee))); // 1e84 push word ptr [bp - 0x12]
   ASM_I(0x1e87); R.ax = (u16)(0x700);                          // 1e87 mov ax, 0x700
   ASM_I(0x1e8a); PUSH(R.ax);                                   // 1e8a push ax
   ASM_I(0x1e8b); PUSH(0x16d9); PUSH(0x1e90); ASM_CS(2955); R_2955: a_2afc_0c44(); ASM_CE(); R.cs = 0x16d9; // 1e8b lcall 0x1afc, 0xc44
@@ -41530,8 +41531,9 @@ static u16 f_2550_016c(u16 p0)
 // 2550:02AC FUN_2550_02ac  FIX: recompiled from the machine code (asm2c)
 static void a_2550_02ac(void)
 {
-  if (asm_resuming) switch (ASM_RSITE()) { case 3493: ASM_RCALL(); goto R_3493; case 3494: ASM_RCALL(); goto R_3494; case 3495: ASM_RCALL(); goto R_3495; case 3496: ASM_RCALL(); goto R_3496; case 3497: ASM_RCALL(); goto R_3497; case 3498: ASM_RCALL(); goto R_3498; case 3499: ASM_RCALL(); goto R_3499; case 3500: ASM_RCALL(); goto R_3500; case 3501: ASM_RCALL(); goto R_3501; case 3502: ASM_RCALL(); goto R_3502; case 3503: ASM_RCALL(); goto R_3503; case 3504: ASM_RCALL(); goto R_3504; case 3505: ASM_RCALL(); goto R_3505; case 3506: ASM_RCALL(); goto R_3506; case 3507: ASM_RCALL(); goto R_3507; case 3508: ASM_RCALL(); goto R_3508; case 3509: ASM_RCALL(); goto R_3509; case 3510: ASM_RCALL(); goto R_3510; case 3511: ASM_RCALL(); goto R_3511; case 3512: ASM_RCALL(); goto R_3512; case 3513: ASM_RCALL(); goto R_3513; case 3514: ASM_RCALL(); goto R_3514; case 3515: ASM_RCALL(); goto R_3515; case 3516: ASM_RCALL(); goto R_3516; case 3517: ASM_RCALL(); goto R_3517; case 3518: ASM_RCALL(); goto R_3518; case 3519: ASM_RCALL(); goto R_3519; case 3520: ASM_RCALL(); goto R_3520; case 3521: ASM_RCALL(); goto R_3521; case 3522: ASM_RCALL(); goto R_3522; case 3523: ASM_RCALL(); goto R_3523; case 3524: ASM_RCALL(); goto R_3524; case 3525: ASM_RCALL(); goto R_3525; case 3526: ASM_RCALL(); goto R_3526; case 3527: ASM_RCALL(); goto R_3527; case 3528: ASM_RCALL(); goto R_3528; case 3529: ASM_RCALL(); goto R_3529; default: asm_resume_fail(ASM_RSITE()); }
+  if (asm_resuming) switch (ASM_RSITE()) { case ASM_FAST_SITE: ASM_RDONE(); goto L_fast_exit; case 3493: ASM_RCALL(); goto R_3493; case 3494: ASM_RCALL(); goto R_3494; case 3495: ASM_RCALL(); goto R_3495; case 3496: ASM_RCALL(); goto R_3496; case 3497: ASM_RCALL(); goto R_3497; case 3498: ASM_RCALL(); goto R_3498; case 3499: ASM_RCALL(); goto R_3499; case 3500: ASM_RCALL(); goto R_3500; case 3501: ASM_RCALL(); goto R_3501; case 3502: ASM_RCALL(); goto R_3502; case 3503: ASM_RCALL(); goto R_3503; case 3504: ASM_RCALL(); goto R_3504; case 3505: ASM_RCALL(); goto R_3505; case 3506: ASM_RCALL(); goto R_3506; case 3507: ASM_RCALL(); goto R_3507; case 3508: ASM_RCALL(); goto R_3508; case 3509: ASM_RCALL(); goto R_3509; case 3510: ASM_RCALL(); goto R_3510; case 3511: ASM_RCALL(); goto R_3511; case 3512: ASM_RCALL(); goto R_3512; case 3513: ASM_RCALL(); goto R_3513; case 3514: ASM_RCALL(); goto R_3514; case 3515: ASM_RCALL(); goto R_3515; case 3516: ASM_RCALL(); goto R_3516; case 3517: ASM_RCALL(); goto R_3517; case 3518: ASM_RCALL(); goto R_3518; case 3519: ASM_RCALL(); goto R_3519; case 3520: ASM_RCALL(); goto R_3520; case 3521: ASM_RCALL(); goto R_3521; case 3522: ASM_RCALL(); goto R_3522; case 3523: ASM_RCALL(); goto R_3523; case 3524: ASM_RCALL(); goto R_3524; case 3525: ASM_RCALL(); goto R_3525; case 3526: ASM_RCALL(); goto R_3526; case 3527: ASM_RCALL(); goto R_3527; case 3528: ASM_RCALL(); goto R_3528; case 3529: ASM_RCALL(); goto R_3529; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x255002AC);
+  if (asm_fast) asm_fast_tick();
   R.cs = 0x1d73;
   ASM_I(0x02ac); ASM_BLOCK(6, 0x02ac); PUSH(R.bp);             // 02ac push bp
   ASM_I(0x02ad); R.bp = (u16)(R.sp);                           // 02ad mov bp, sp
@@ -41727,7 +41729,8 @@ L_050c:   ASM_I(0x050c); ASM_BLOCK(1, 0x050c); PUSH(0x1d73); PUSH(0x0511); ASM_C
   ASM_I(0x051e); PUSH(R.ax);                                   // 051e push ax
   ASM_I(0x051f); PUSH(0x1d73); PUSH(0x0524); ASM_CS(3529); R_3529: a_2afc_3e1d(); ASM_CE(); R.cs = 0x1d73; // 051f lcall 0x1afc, 0x3e1d
   ASM_I(0x0524); ASM_BLOCK(1, 0x0524); R.sp = (u16)(ADD16(R.sp, 0x8)); // 0524 add sp, 8
-L_0527:   ASM_I(0x0527); ASM_BLOCK(5, 0x0527); R.si = POP();           // 0527 pop si
+L_0527:   if (asm_fast) { asm_fast_frame(); ASM_YIELD_CHECK(ASM_FAST_SITE); }
+L_fast_exit:   ASM_I(0x0527); ASM_BLOCK(5, 0x0527); R.si = POP();           // 0527 pop si
   ASM_I(0x0528); R.di = POP();                                 // 0528 pop di
   ASM_I(0x0529); R.sp = (u16)(R.bp);                           // 0529 mov sp, bp
   ASM_I(0x052b); R.bp = POP();                                 // 052b pop bp
@@ -62355,10 +62358,10 @@ static void a_2afc_385d(void)
   R.cs = 0x231f;
 L_385d:   ASM_I(0x385d); ASM_BLOCK(1, 0x385d); PUSH(0x231f); PUSH(0x3862); ASM_CS(4976); R_4976: a_2afc_37fe(); ASM_CE(); R.cs = 0x231f; // 385d lcall 0x1afc, 0x37fe
   ASM_I(0x3862); ASM_BLOCK(2, 0x3862); SUB16(R.dx, M16(DS, (u16)(0x7190))); // 3862 cmp dx, word ptr [0x7190]
-  ASM_I(0x3866); if (R.cf) { ASM_BACK(0x385d); ASM_YIELD_CHECK(4977); goto L_385d; }  // 3866 jb 0x385d
+  ASM_I(0x3866); if (R.cf) { ASM_BACK(0x385d); if (asm_fast) asm_fast_wait(); ASM_YIELD_CHECK(4977); goto L_385d; }  // 3866 jb 0x385d
   ASM_I(0x3868); ASM_BLOCK(1, 0x3868); if (!R.cf && !R.zf) goto L_3870; // 3868 ja 0x3870
   ASM_I(0x386a); ASM_BLOCK(2, 0x386a); SUB16(R.ax, M16(DS, (u16)(0x718e))); // 386a cmp ax, word ptr [0x718e]
-  ASM_I(0x386e); if (R.cf) { ASM_BACK(0x385d); ASM_YIELD_CHECK(4978); goto L_385d; }  // 386e jb 0x385d
+  ASM_I(0x386e); if (R.cf) { ASM_BACK(0x385d); if (asm_fast) asm_fast_wait(); ASM_YIELD_CHECK(4978); goto L_385d; }  // 386e jb 0x385d
 L_3870:   ASM_I(0x3870); ASM_BLOCK(1, 0x3870); R.sp += 4; goto L_ret;  // 3870 retf
 L_ret:
   return;
@@ -62416,10 +62419,10 @@ static void a_2afc_388b(void)
   ASM_I(0x389f); W16(SS, (u16)(R.bp + 0xfffe), R.dx);          // 389f mov word ptr [bp - 2], dx
 L_38a2:   ASM_I(0x38a2); ASM_BLOCK(1, 0x38a2); PUSH(0x231f); PUSH(0x38a7); ASM_CS(4981); R_4981: a_2afc_37fe(); ASM_CE(); R.cs = 0x231f; // 38a2 lcall 0x1afc, 0x37fe
   ASM_I(0x38a7); ASM_BLOCK(2, 0x38a7); SUB16(R.dx, M16(SS, (u16)(R.bp + 0xfffe))); // 38a7 cmp dx, word ptr [bp - 2]
-  ASM_I(0x38aa); if (R.cf) { ASM_BACK(0x38a2); ASM_YIELD_CHECK(4982); goto L_38a2; }  // 38aa jb 0x38a2
+  ASM_I(0x38aa); if (R.cf) { ASM_BACK(0x38a2); if (asm_fast) asm_fast_wait(); ASM_YIELD_CHECK(4982); goto L_38a2; }  // 38aa jb 0x38a2
   ASM_I(0x38ac); ASM_BLOCK(1, 0x38ac); if (!R.cf && !R.zf) goto L_38b3; // 38ac ja 0x38b3
   ASM_I(0x38ae); ASM_BLOCK(2, 0x38ae); SUB16(R.ax, M16(SS, (u16)(R.bp + 0xfffc))); // 38ae cmp ax, word ptr [bp - 4]
-  ASM_I(0x38b1); if (R.cf) { ASM_BACK(0x38a2); ASM_YIELD_CHECK(4983); goto L_38a2; }  // 38b1 jb 0x38a2
+  ASM_I(0x38b1); if (R.cf) { ASM_BACK(0x38a2); if (asm_fast) asm_fast_wait(); ASM_YIELD_CHECK(4983); goto L_38a2; }  // 38b1 jb 0x38a2
 L_38b3:   ASM_I(0x38b3); ASM_BLOCK(3, 0x38b3); R.sp = (u16)(R.bp);     // 38b3 mov sp, bp
   ASM_I(0x38b5); R.bp = POP();                                 // 38b5 pop bp
   ASM_I(0x38b6); R.sp += 4; goto L_ret;                        // 38b6 retf
