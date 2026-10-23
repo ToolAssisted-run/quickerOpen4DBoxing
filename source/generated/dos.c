@@ -533,6 +533,15 @@ int dos_open_host_files(void)
   return n;
 }
 
+// quickerOpen4DBoxing: the files of the disks in the state as their places in the disks' list (0 none, 1 the
+// first): out before the state's variables are saved, back after they are saved or loaded
+void dos_state_files(int out)
+{
+  for (int k = 0; k < SFT_MAX; k++)
+    if (out) sft[k].disk = (const DosFile *)(uintptr_t)(sft[k].disk ? sft[k].disk - host->files + 1 : 0);
+    else sft[k].disk = sft[k].disk ? &host->files[(uintptr_t)sft[k].disk - 1] : NULL;
+}
+
 // quickerOpen4DBoxing: this file's part of a machine's state (tools/generate.py)
 #include <stddef.h>
 void o4db_state_dos(void (*v)(void *data, size_t size, void *c), void *c)

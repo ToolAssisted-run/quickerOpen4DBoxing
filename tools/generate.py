@@ -244,8 +244,18 @@ int game_run(const GameHost *h)
                  "int dos_open_host_files(void)\n{\n  int n = 0;\n"
                  "  for (int k = 0; k < SFT_MAX; k++) if (sft[k].refs > 0 && sft[k].kind == SFT_FILE && sft[k].f) n++;\n"
                  "  return n;\n}\n")
+        # a state's files of the disks as their places in the disks' list, not as this process's addresses: a saved
+        # machine the same in every process (a closed file's entry keeps its last one)
+        text += ("\n// quickerOpen4DBoxing: the files of the disks in the state as their places in the disks' list (0 none, 1 the\n"
+                 "// first): out before the state's variables are saved, back after they are saved or loaded\n"
+                 "void dos_state_files(int out)\n{\n"
+                 "  for (int k = 0; k < SFT_MAX; k++)\n"
+                 "    if (out) sft[k].disk = (const DosFile *)(uintptr_t)(sft[k].disk ? sft[k].disk - host->files + 1 : 0);\n"
+                 "    else sft[k].disk = sft[k].disk ? &host->files[(uintptr_t)sft[k].disk - 1] : NULL;\n"
+                 "}\n")
     if name == "dos.h":
-        text = must_sub(name, text, "#endif", "int dos_open_host_files(void);  // quickerOpen4DBoxing (dos.c)\n#endif", count=text.count("#endif"))
+        text = must_sub(name, text, "#endif", "int dos_open_host_files(void);  // quickerOpen4DBoxing (dos.c)\n"
+                        "void dos_state_files(int out);  // quickerOpen4DBoxing (dos.c)\n#endif", count=text.count("#endif"))
     if name == "asm2c.c":
         # (the services' writes for the machine's deltas: the BIOS's data for the keyboard, the clock, the mouse and
         # the system services; DOS, the video and the rest may write anywhere)

@@ -533,6 +533,7 @@ static void o4db_load_pristine(void)
 {
   const uint8_t *p = pristine + sizeof M;
   o4db_state_all(load_part, &p);
+  dos_state_files(0);
   asm_dirty_all = 1;
 }
 
@@ -543,12 +544,15 @@ size_t o4db_state_size(void)
   return n;
 }
 
+// (the game's open files of the disks saved as their places in the disks' list: dos_state_files)
 void o4db_save(void *out)
 {
   uint8_t *p = out;
   memcpy(p, &M, sizeof M);
   p += sizeof M;
+  dos_state_files(1);
   o4db_state_all(save_part, &p);
+  dos_state_files(0);
 }
 
 void o4db_load(const void *in)
@@ -564,6 +568,7 @@ void o4db_load(const void *in)
   memcpy(&M, p, sizeof M);
   p += sizeof M;
   o4db_state_all(load_part, &p);
+  dos_state_files(0);
   asm_dirty_all = 1;
 }
 
@@ -663,7 +668,9 @@ int o4db_save_delta(void *out, unsigned maxPages)
   uint8_t *p = out;
   memcpy(p, &M, sizeof M);
   p += sizeof M;
+  dos_state_files(1);
   o4db_state_all(save_rest, &p);
+  dos_state_files(0);
   uint16_t *count = (uint16_t *)p, *index = count + 1;
   uint8_t *pages = (uint8_t *)(index + maxPages);
   unsigned n = 0;
@@ -724,6 +731,7 @@ void o4db_load_delta(const void *in, unsigned maxPages)
   memcpy(&M, p, sizeof M);
   p += sizeof M;
   o4db_state_all(load_rest, &p);
+  dos_state_files(0);
   const uint16_t *count = (const uint16_t *)p, *index = count + 1;
   const uint8_t *pages = (const uint8_t *)(index + maxPages);
   if (asm_dirty_all)

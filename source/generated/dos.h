@@ -41,4 +41,5 @@ extern O4DB_TLS void (*dos_read_hook)(const char *name, u16 seg, u16 off, u16 le
 void dos_close_all(void);
 
 int dos_open_host_files(void);  // quickerOpen4DBoxing (dos.c)
+void dos_state_files(int out);  // quickerOpen4DBoxing (dos.c)
 #endif
