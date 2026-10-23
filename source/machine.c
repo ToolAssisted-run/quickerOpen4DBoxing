@@ -265,15 +265,19 @@ uint64_t o4db_run(const O4dbInput *inputs, size_t n) { return o4db_run_ahead(inp
 // The fight's logic depends on the drawing only through the time the drawing takes and one bug of the game's. At a
 // speed where every frame fits in one of the timer's 10 ms ticks (220,000 instructions a millisecond), the time does
 // not matter: the boxers' steps are the ticks', and the frames between two ticks have nothing to do. So the fast
-// machine draws no scene and makes no world transforms of the camera and the boxers (1c47:229c, 1b1d:115a), and at
-// the end of the frames' driver (2550:02ac) with no tick due it lets time go to the next one, event by event (the
-// frame ends with their inputs, the keys, the timer's interrupts, in their order). The bug:
-// a punch that misses (1eb6:19fa's miss path) takes the defender's stamina by a local never set ([bp - 0x12]): the
-// stack's garbage there, left by the game's last whole frame (its drawing, its displays) or by that tick's own
-// logic. The fast machine fills the stack below each tick's frame with a sentinel; when a miss finds it, the step is
-// run again from its start with that tick held back for two whole frames (drawn, as the game draws between its
-// ticks), which leave the game's garbage. (What a timer or key interrupt in the middle of the game's drawing leaves
-// there is not reproduced: the game's interrupts land where its drawing's instructions put them.)
+// machine draws no scene (1c47:229c), and at the end of the frames' driver (2550:02ac) with no tick due it lets time
+// go to the next one, event by event (the frame ends with their inputs, the keys, the timer's interrupts, in their
+// order). The bug: a punch that misses (1eb6:19fa's miss path) takes the defender's stamina by a local never set
+// ([bp - 0x12]): the stack's garbage there, left by the game's last whole frame (its drawing, its displays) or by
+// that tick's own logic. The fast machine fills the stack below each tick's frame with a sentinel; when a miss finds
+// it, the step is run again from its start with that tick held back for two whole frames (drawn, as the game draws
+// between its ticks), which leave the game's garbage. Their drawing is the game's because the world's transforms of
+// the camera and the boxers (1b1d:115a) are made at every tick: what they leave carries from frame to frame (made
+// only for a replay's frames, a third of the misses read the game's garbage; made at every tick, all but about one
+// in 200). (What a timer interrupt in the middle of the game's drawing leaves there, its music driver's locals, is
+// not reproduced: the game's interrupts land where its drawing's instructions put them. Nor the time its drawing
+// takes where the game's time is paused, 25bb:018e to 25bb:0164, after a round's bell: the ticks that pass there are
+// lost to the fight's clock. A round's end to the next round's start goes as the game's: o4db_set_fast(0).)
 #define FAST_SENTINEL 0xDEAD
 #define FAST_FILL 3072        // (bytes of the stack below the frames' driver: 1eb6:19fa's local is 0xCE below)
 #define DS_ELAPSED 0xCEF6     // the timer's milliseconds not yet taken by a frame (25bb:02b8 adds 10 a tick)
@@ -308,8 +312,11 @@ static int replay_index(uint16_t tick)
 // loop, 113b:0776's call of 113b:28e4 (returning to 0ac7) and its frame (the one view's, returning to 29b9), and the
 // bell's waits, 113b:06a0's two "while (!2afc:3871()) frame" loops (06db, 075d); elsewhere a frame may be followed
 // by a wait of its own, 113b:06a0's ring before 2afc:385d, 113b:0776's frame before 2afc:388b's 400 ms, and goes as
-// the game's. The frames' driver's return address is above its BP, its caller's above the BP it saved)
+// the game's. The frames' driver's return address is above its BP, its caller's above the BP it saved. And the
+// round's last frame, whose logic ended it (its clock at the round's length, or DS:CF0A set), goes as the game's too:
+// 113b:28e4 rings the bell right after it, before the timer's next tick, the bell's waits counted from then)
 static uint16_t stack_word(uint16_t a) { const uint8_t *stack = g_mem + ((uint32_t)R.ss << 4); return (uint16_t)(stack[a] | stack[(uint16_t)(a + 1)] << 8); }
+static uint32_t ds_long(uint16_t off) { return (uint32_t)ds_word(off) | (uint32_t)ds_word((uint16_t)(off + 2)) << 16; }
 static int fast_forward_caller(void)
 {
   if (stack_word((uint16_t)(R.bp + 4)) != 0x095E) return 0;
@@ -317,7 +324,8 @@ static int fast_forward_caller(void)
   if (ip == 0x06DB || ip == 0x075D) return 1;
   if (ip != 0x29B9) return 0;
   const uint16_t bp = stack_word(R.bp);
-  return stack_word((uint16_t)(bp + 4)) == 0x095E && stack_word((uint16_t)(bp + 2)) == 0x0AC7;
+  if (stack_word((uint16_t)(bp + 4)) != 0x095E || stack_word((uint16_t)(bp + 2)) != 0x0AC7) return 0;
+  return (int32_t)(ds_long(0x5ED8) - ds_long(0xCF02)) > 0 && ds_word(0xCF0A) == 0;  // (113b:29b9's check)
 }
 
 void asm_fast_frame(void)

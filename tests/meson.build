@@ -13,5 +13,6 @@ o4dbShots = executable('o4dbShots', 'o4dbShots.c', dependencies : [ quickerOpen4
 o4dbScramble = executable('o4dbScramble', 'o4dbScramble.c', dependencies : [ quickerOpen4DBoxingDependency ])
 o4dbFrameFree = executable('o4dbFrameFree', 'o4dbFrameFree.c', dependencies : [ quickerOpen4DBoxingTraceDependency ], build_by_default : false)
 o4dbFastCheck = executable('o4dbFastCheck', 'o4dbFastCheck.c', dependencies : [ quickerOpen4DBoxingDependency ])
+o4dbFastCheckTrace = executable('o4dbFastCheckTrace', 'o4dbFastCheck.c', c_args : [ '-DFASTCHECK_TRACE' ], dependencies : [ quickerOpen4DBoxingTraceDependency ], build_by_default : false)
 o4dbThreads = executable('o4dbThreads', 'o4dbThreads.c', dependencies : [ quickerOpen4DBoxingDependency ])
 o4dbBreak = executable('o4dbBreak', 'o4dbBreak.c', dependencies : [ quickerOpen4DBoxingDependency ])

@@ -467,6 +467,10 @@ def resume_transform(text):
     # come at other times)
     text = must_sub("box_core.c", text, "  FN(0x1EB63354);\n", "  FN(0x1EB63354);\n  if (asm_test_hook) asm_test_hook(0x1EB63354);\n")
     text = must_sub("box_core.c", text, "  FN(0x1EB63624);\n", "  FN(0x1EB63624);\n  if (asm_test_hook) asm_test_hook(0x1EB63624);\n")
+    # (and at each frame's time taken, 25bb:063e, and the game's time paused and resumed, 25bb:018e and 25bb:0164)
+    text = must_sub("box_core.c", text, "  FN(0x25BB063E);\n", "  FN(0x25BB063E);\n  if (asm_test_hook) asm_test_hook(0x25BB063E);\n")
+    text = must_sub("box_core.c", text, "  FN(0x25BB018E);\n", "  FN(0x25BB018E);\n  if (asm_test_hook) asm_test_hook(0x25BB018E);\n")
+    text = must_sub("box_core.c", text, "  FN(0x25BB0164);\n", "  FN(0x25BB0164);\n  if (asm_test_hook) asm_test_hook(0x25BB0164);\n")
     text = must_sub("box_core.c", text, "  FN(0x1C47229C);\n", "  FN(0x1C47229C);\n  if (asm_test_skip & 1) { R.sp += 4; return; }\n")
     # the fight's logic alone (machine.c's o4db_set_fast): at the frames' driver's entry (2550:02ac) the tick's start,
     # at its end time to the timer's next tick when none is due, and the step's stop there if that tick read the
@@ -474,16 +478,14 @@ def resume_transform(text):
     # local checked (1eb6:19fa at 1e84, [bp - 0x12])
     text = must_sub("box_core.c", text, "static void a_2550_02ac(void)\n{\n  if (asm_resuming) switch (ASM_RSITE()) { ",
                     "static void a_2550_02ac(void)\n{\n  if (asm_resuming) switch (ASM_RSITE()) { case ASM_FAST_SITE: ASM_RDONE(); goto L_fast_exit; ")
-    text = must_sub("box_core.c", text, "  FN(0x255002AC);\n", "  FN(0x255002AC);\n  if (asm_fast) asm_fast_tick();\n")
+    text = must_sub("box_core.c", text, "  FN(0x255002AC);\n", "  FN(0x255002AC);\n  if (asm_test_hook) asm_test_hook(0x255002AC);\n  if (asm_fast) asm_fast_tick();\n")
     text = must_sub("box_core.c", text, "L_0527:   ASM_I(0x0527); ASM_BLOCK(5, 0x0527); R.si = POP();",
                     "L_0527:   if (asm_fast) { asm_fast_frame(); ASM_YIELD_CHECK(ASM_FAST_SITE); }\nL_fast_exit:   ASM_I(0x0527); ASM_BLOCK(5, 0x0527); R.si = POP();")
     text = must_sub("box_core.c", text, "  if (asm_test_skip & 1) { R.sp += 4; return; }\n",
                     "  if (asm_test_skip & 1) { R.sp += 4; return; }\n  if (asm_skip_draw) { R.sp += 4; return; }\n")
     text = must_sub("box_core.c", text, "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); PUSH(M16(SS, (u16)(R.bp + 0xffee)));",
-                    "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_fast) asm_fast_miss(); PUSH(M16(SS, (u16)(R.bp + 0xffee)));")
-    # the camera's and the boxers' world transforms (1b1d:115a) not made either, but in a replay's whole frames
-    # (tests/o4dbFastCheck: the fight the same without them)
-    text = must_sub("box_core.c", text, "  FN(0x1B1D115A);\n", "  FN(0x1B1D115A);\n  if (asm_skip_draw) { R.sp += 4; return; }\n")
+                    "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_test_hook) asm_test_hook(0x1EB61E84); if (asm_fast) asm_fast_miss(); "
+                    "PUSH(M16(SS, (u16)(R.bp + 0xffee)));")
     # (and the busy waits on the timer's count, 2afc:385d's and 2afc:388b's loops: time to the timer's next interrupt)
     for fn, back in (("a_2afc_385d", "0x385d"), ("a_2afc_388b", "0x38a2")):
         start = text.index(f"static void {fn}(void)\n{{\n")

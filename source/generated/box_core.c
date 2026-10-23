@@ -25242,7 +25242,6 @@ static void a_1b1d_115a(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case 2508: ASM_RCALL(); goto R_2508; case 2509: ASM_RCALL(); goto R_2509; case 2510: ASM_RCALL(); goto R_2510; case 2511: ASM_RCALL(); goto R_2511; case 2512: ASM_RCALL(); goto R_2512; case 2513: ASM_RCALL(); goto R_2513; case 2514: ASM_RCALL(); goto R_2514; case 2515: ASM_RCALL(); goto R_2515; case 2516: ASM_RCALL(); goto R_2516; case 2517: ASM_RCALL(); goto R_2517; case 2518: ASM_RCALL(); goto R_2518; case 2519: ASM_RCALL(); goto R_2519; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x1B1D115A);
-  if (asm_skip_draw) { R.sp += 4; return; }
   R.cs = 0x1340;
   ASM_I(0x115a); ASM_BLOCK(7, 0x115a); PUSH(R.bp);             // 115a push bp
   ASM_I(0x115b); R.bp = (u16)(R.sp);                           // 115b mov bp, sp
@@ -32538,7 +32537,7 @@ L_1e6c:   ASM_I(0x1e6c); ASM_BLOCK(5, 0x1e6c); PUSH(R.ax);             // 1e6c p
   ASM_I(0x1e7f); R.sp = (u16)(R.bp);                           // 1e7f mov sp, bp
   ASM_I(0x1e81); R.bp = POP();                                 // 1e81 pop bp
   ASM_I(0x1e82); R.sp += 4; goto L_ret;                        // 1e82 retf
-L_1e84:   ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_fast) asm_fast_miss(); PUSH(M16(SS, (u16)(R.bp + 0xffee))); // 1e84 push word ptr [bp - 0x12]
+L_1e84:   ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_test_hook) asm_test_hook(0x1EB61E84); if (asm_fast) asm_fast_miss(); PUSH(M16(SS, (u16)(R.bp + 0xffee))); // 1e84 push word ptr [bp - 0x12]
   ASM_I(0x1e87); R.ax = (u16)(0x700);                          // 1e87 mov ax, 0x700
   ASM_I(0x1e8a); PUSH(R.ax);                                   // 1e8a push ax
   ASM_I(0x1e8b); PUSH(0x16d9); PUSH(0x1e90); ASM_CS(2955); R_2955: a_2afc_0c44(); ASM_CE(); R.cs = 0x16d9; // 1e8b lcall 0x1afc, 0xc44
@@ -41534,6 +41533,7 @@ static void a_2550_02ac(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case ASM_FAST_SITE: ASM_RDONE(); goto L_fast_exit; case 3493: ASM_RCALL(); goto R_3493; case 3494: ASM_RCALL(); goto R_3494; case 3495: ASM_RCALL(); goto R_3495; case 3496: ASM_RCALL(); goto R_3496; case 3497: ASM_RCALL(); goto R_3497; case 3498: ASM_RCALL(); goto R_3498; case 3499: ASM_RCALL(); goto R_3499; case 3500: ASM_RCALL(); goto R_3500; case 3501: ASM_RCALL(); goto R_3501; case 3502: ASM_RCALL(); goto R_3502; case 3503: ASM_RCALL(); goto R_3503; case 3504: ASM_RCALL(); goto R_3504; case 3505: ASM_RCALL(); goto R_3505; case 3506: ASM_RCALL(); goto R_3506; case 3507: ASM_RCALL(); goto R_3507; case 3508: ASM_RCALL(); goto R_3508; case 3509: ASM_RCALL(); goto R_3509; case 3510: ASM_RCALL(); goto R_3510; case 3511: ASM_RCALL(); goto R_3511; case 3512: ASM_RCALL(); goto R_3512; case 3513: ASM_RCALL(); goto R_3513; case 3514: ASM_RCALL(); goto R_3514; case 3515: ASM_RCALL(); goto R_3515; case 3516: ASM_RCALL(); goto R_3516; case 3517: ASM_RCALL(); goto R_3517; case 3518: ASM_RCALL(); goto R_3518; case 3519: ASM_RCALL(); goto R_3519; case 3520: ASM_RCALL(); goto R_3520; case 3521: ASM_RCALL(); goto R_3521; case 3522: ASM_RCALL(); goto R_3522; case 3523: ASM_RCALL(); goto R_3523; case 3524: ASM_RCALL(); goto R_3524; case 3525: ASM_RCALL(); goto R_3525; case 3526: ASM_RCALL(); goto R_3526; case 3527: ASM_RCALL(); goto R_3527; case 3528: ASM_RCALL(); goto R_3528; case 3529: ASM_RCALL(); goto R_3529; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x255002AC);
+  if (asm_test_hook) asm_test_hook(0x255002AC);
   if (asm_fast) asm_fast_tick();
   R.cs = 0x1d73;
   ASM_I(0x02ac); ASM_BLOCK(6, 0x02ac); PUSH(R.bp);             // 02ac push bp
@@ -42177,6 +42177,7 @@ static void a_25bb_0164(void)
 {
   if (asm_resuming) asm_resume_fail(ASM_RSITE());
   FN(0x25BB0164);
+  if (asm_test_hook) asm_test_hook(0x25BB0164);
   R.cs = 0x1dde;
   ASM_I(0x0164); ASM_BLOCK(2, 0x0164); SUB16(M16(DS, (u16)(0xc89c)), 0x0); // 0164 cmp word ptr [0xc89c], 0
   ASM_I(0x0169); if (R.zf) goto L_0180;                        // 0169 je 0x180
@@ -42207,6 +42208,7 @@ static void a_25bb_018e(void)
 {
   if (asm_resuming) asm_resume_fail(ASM_RSITE());
   FN(0x25BB018E);
+  if (asm_test_hook) asm_test_hook(0x25BB018E);
   R.cs = 0x1dde;
   ASM_I(0x018e); ASM_BLOCK(2, 0x018e); W16(DS, (u16)(0x6234), 0x1); // 018e mov word ptr [0x6234], 1
   ASM_I(0x0194); R.sp += 4; goto L_ret;                        // 0194 retf
@@ -42815,6 +42817,7 @@ static void a_25bb_063e(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case 3596: ASM_RCALL(); goto R_3596; case 3597: ASM_RCALL(); goto R_3597; case 3598: ASM_RCALL(); goto R_3598; case 3599: ASM_RCALL(); goto R_3599; case 3600: ASM_RCALL(); goto R_3600; case 3601: ASM_RCALL(); goto R_3601; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x25BB063E);
+  if (asm_test_hook) asm_test_hook(0x25BB063E);
   R.cs = 0x1dde;
   ASM_I(0x063e); ASM_BLOCK(2, 0x063e); SUB16(M16(DS, (u16)(0xa47a)), 0x0); // 063e cmp word ptr [0xa47a], 0
   ASM_I(0x0643); if (!R.zf && R.sf == R.of) goto L_068f;       // 0643 jg 0x68f

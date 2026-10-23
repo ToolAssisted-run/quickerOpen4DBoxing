@@ -5,6 +5,7 @@
 // controls' replay) and every step's end; the logs compared:
 //   o4dbFastCheck GAMEDIR MOVIE FROM STEPS [SEED]   (the environment's POKES: pokes.h, during the movie; SAVE: the
 //   start saved to that file)
+// (o4dbFastCheckTrace, on the trace variant: each miss shown with the instruction that last wrote the word it read)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,12 @@ static size_t curStep;
 static Event *logs[2];
 static size_t nLog[2], cap[2], stepStart;
 static int run = -1;
+// (and the frames' times taken, 25bb:063e, the game's time paused and resumed, 25bb:018e and 25bb:0164, the misses'
+// garbage, 1eb6:1e84: shown near a difference)
+typedef struct { size_t step; uint32_t fn; uint16_t v[8]; size_t writes; } Aux;
+#define AUX_STEPS (getenv("AUX_STEPS") ? atoi(getenv("AUX_STEPS")) : 3)
+static Aux *aux[2];
+static size_t nAux[2], capAux[2], auxStart;
 
 static const uint8_t *ds(void) { return o4db_memory() + ((uint32_t)o4db_data_segment() << 4); }
 static uint16_t dw(uint16_t off) { const uint8_t *d = ds(); return (uint16_t)(d[off] | d[off + 1] << 8); }
@@ -39,10 +46,77 @@ static Event *next_event(void)
   return &logs[run][nLog[run]++];
 }
 
+#ifdef FASTCHECK_TRACE
+// the stack segment's last writers (CS:IP, from the trace variant's write hook)
+static uint32_t stackSeg, lastWriter[0x10000];
+// (the environment's WATCH, a stack offset: its writes logged, from the step before WATCHSTEP on)
+typedef struct { size_t step; uint32_t ip; uint16_t value, ticks; uint64_t frames; } Write;
+static Write *watched[2];
+static size_t nWatched[2], capWatched[2];
+static long watchOff = -1, watchStep;
+static void write_hook(uint32_t addr, uint16_t value, int size)
+{
+  const uint32_t off = addr - (stackSeg << 4);
+  if (off >= 0x10000) return;
+  const uint32_t ip = o4db_test_trace_ip();
+  lastWriter[off] = ip;
+  if (size == 2) lastWriter[(off + 1) & 0xFFFF] = ip;
+  if (run >= 0 && (long)curStep + 1 >= watchStep && (off == (uint32_t)watchOff || (size == 2 && off + 1 == (uint32_t)watchOff)))
+  {
+    if (nWatched[run] == capWatched[run]) watched[run] = realloc(watched[run], (capWatched[run] = capWatched[run] ? 2 * capWatched[run] : 4096) * sizeof(Write));
+    watched[run][nWatched[run]++] = (Write){ curStep, ip, value, dw(0xCF4A), o4db_frames() };
+    if (nAux[run] == capAux[run]) aux[run] = realloc(aux[run], (capAux[run] = capAux[run] ? 2 * capAux[run] : 4096) * sizeof(Aux));
+    aux[run][nAux[run]++] = (Aux){ curStep, 0x57524954, { value, (uint16_t)(ip >> 16), (uint16_t)ip, dw(0xCF4A) }, 0 };
+  }
+}
+#endif
+
+// (the environment's DUMPSTEP: the data segment at that step's first frame with a tick, written to DUMPDIR/ds-<run>.bin)
+static long dumpStep = -1;
+static int dumped[2];
+static void aux_event(uint32_t fn)
+{
+  const uint16_t *r = (const uint16_t *)o4db_registers();
+  const uint8_t *m = o4db_memory();
+  if (fn == 0x255002AC && (long)curStep == dumpStep && !dumped[run] && dw(0xCEF6))
+  {
+    char name[512];
+    snprintf(name, sizeof name, "%s/ds-%d.bin", getenv("DUMPDIR") ? getenv("DUMPDIR") : ".", run);
+    FILE *f = fopen(name, "wb");
+    if (f) fwrite(ds(), 1, 0x10000, f), fclose(f);
+    dumped[run] = 1;
+  }
+  if (nAux[run] == capAux[run]) aux[run] = realloc(aux[run], (capAux[run] = capAux[run] ? 2 * capAux[run] : 4096) * sizeof(Aux));
+  Aux *a = &aux[run][nAux[run]++];
+  a->step = curStep;
+  a->fn = fn;
+  if (fn == 0x255002AC || fn == 0x1EB63624)
+  {
+    const uint32_t sp = ((uint32_t)r[10] << 4) + r[7];
+    a->v[0] = (uint16_t)(m[sp] | m[sp + 1] << 8); a->v[1] = (uint16_t)(m[sp + 2] | m[sp + 3] << 8); a->v[2] = dw(0xCEF6); a->v[3] = dw(0xCF4A); a->v[4] = dw(0x690E);
+  }
+  else if (fn == 0x1EB61E84)
+  {
+    const uint32_t at = ((uint32_t)r[10] << 4) + (uint16_t)(r[6] - 0x12);
+    a->v[0] = (uint16_t)(m[at] | m[at + 1] << 8); a->v[1] = r[6]; a->v[2] = r[7]; a->v[3] = dw(0xCF4A); a->v[4] = dw(0x690E); a->v[5] = dw(0xCEF6);
+#ifdef FASTCHECK_TRACE
+    const uint32_t w = lastWriter[(uint16_t)(r[6] - 0x12)];
+    a->v[6] = (uint16_t)(w >> 16); a->v[7] = (uint16_t)w;
+    a->writes = nWatched[run];
+#endif
+  }
+  else
+  {
+    a->v[0] = dw(0xCEF6); a->v[1] = dw(0xCC58); a->v[2] = dw(0xA478); a->v[3] = dw(0x6240); a->v[4] = dw(0xC700); a->v[5] = dw(0xC89C);
+    a->v[6] = dw(0xCF4A); a->v[7] = dw(0x690E);
+  }
+}
+
 static void event_hook(uint32_t fn)
 {
   if (run < 0) return;
-  if (fn == 0xFFFFFFFF) { nLog[run] = stepStart; return; }  // (the fast fight runs the step again)
+  if (fn == 0xFFFFFFFF) { nLog[run] = stepStart; nAux[run] = auxStart; return; }  // (the fast fight runs the step again)
+  if (fn == 0x25BB063E || fn == 0x25BB018E || fn == 0x25BB0164 || fn == 0x1EB61E84 || fn == 0x255002AC || fn == 0x1EB63624) { aux_event(fn); return; }
   if (fn != 0x1EB63354) return;
   const uint16_t *r = (const uint16_t *)o4db_registers();
   const uint8_t *m = o4db_memory();
@@ -101,10 +175,19 @@ int main(int argc, char **argv)
   Event *ends[2] = { malloc(steps * sizeof(Event)), malloc(steps * sizeof(Event)) };
   double seconds[2];
   o4db_test_hooks(event_hook, 0);
+  if (getenv("DUMPSTEP")) dumpStep = atol(getenv("DUMPSTEP"));
+#ifdef FASTCHECK_TRACE
+  stackSeg = ((const uint16_t *)o4db_registers())[10];
+  o4db_test_trace_writes(write_hook);
+  if (getenv("WATCH")) watchOff = strtol(getenv("WATCH"), NULL, 16), watchStep = getenv("WATCHSTEP") ? atol(getenv("WATCHSTEP")) : 0;
+#endif
   // (the environment's ONLYFAST: the fast fight alone, for a profile)
   for (run = getenv("ONLYFAST") ? 1 : 0; run < 2; run++)
   {
     o4db_load(state);
+#ifdef FASTCHECK_TRACE
+    memset(lastWriter, 0, sizeof lastWriter);
+#endif
     o4db_set_fast(run);
     // (the environment's FASTSKIP: o4db_test_hooks's parts skipped in the fast fight)
     o4db_test_hooks(event_hook, run && getenv("FASTSKIP") ? (unsigned)strtoul(getenv("FASTSKIP"), NULL, 0) : 0);
@@ -113,6 +196,7 @@ int main(int argc, char **argv)
     for (size_t k = 0; k < steps; k++)
     {
       stepStart = nLog[run];
+      auxStart = nAux[run];
       curStep = k;
       const uint64_t passed = o4db_step(&stepIn[k]);
       snprintf(ends[run][k].summary, sizeof ends[run][k].summary, "phase %u over %u/%u blue down %u kd %u hp %6d, red down %u kd %u hp %6d, count %2u, 9754 %u, 6234 %u",
@@ -134,6 +218,21 @@ int main(int argc, char **argv)
   if (getenv("ONLYFAST")) { printf("%zu steps: the fast fight %.3f s (%.3f ms a step, %llu replays)\n", steps, seconds[1], seconds[1] * 1000.0 / (double)steps, (unsigned long long)o4db_fast_replays()); return 0; }
   printf("%zu steps: the game %.3f s (%zu boxer steps), the fast fight %.3f s (%zu boxer steps, %llu replays): %.1fx\n", steps, seconds[0], nLog[0], seconds[1], nLog[1],
          (unsigned long long)o4db_fast_replays(), seconds[0] / seconds[1]);
+  // the misses' garbage (1eb6:1e84's reads), the game's and the fast fight's, in their order
+  {
+    size_t i = 0, j = 0, n = 0, same = 0;
+    for (;;)
+    {
+      while (i < nAux[0] && aux[0][i].fn != 0x1EB61E84) i++;
+      while (j < nAux[1] && aux[1][j].fn != 0x1EB61E84) j++;
+      if (i >= nAux[0] || j >= nAux[1]) break;
+      n++;
+      if (aux[0][i].v[0] == aux[1][j].v[0]) same++;
+      else if (getenv("MISSES")) printf("miss %zu (steps %zu, %zu): the game's %04X, the fast fight's %04X\n", n, aux[0][i].step, aux[1][j].step, aux[0][i].v[0], aux[1][j].v[0]);
+      i++, j++;
+    }
+    printf("misses: %zu, their garbage the same: %zu\n", n, same);
+  }
   const size_t common = nLog[0] < nLog[1] ? nLog[0] : nLog[1];
   for (size_t k = 0; k < common; k++)
   {
@@ -150,6 +249,41 @@ int main(int argc, char **argv)
     int shown = 0;
     for (size_t i = 0; i < a->n && shown < 24; i++)
       if (a->bytes[i] != b->bytes[i]) { printf("  byte %4zu: %02X %02X\n", i, a->bytes[i], b->bytes[i]); shown++; }
+    const size_t from = a->step >= (size_t)AUX_STEPS ? a->step - (size_t)AUX_STEPS : 0;
+    for (int r = 0; r < 2; r++)
+    {
+      printf("  %s, steps %zu-%zu (frames with no time taken: counted):\n", r ? "the fast fight" : "the game", from, a->step + 1);
+      unsigned idle = 0;
+      for (size_t j = 0; j < nAux[r]; j++)
+      {
+        const Aux *x = &aux[r][j];
+        if (x->step < from || x->step > a->step + 1) continue;
+        if (x->fn == 0x25BB063E && x->v[0] == 0) { idle++; continue; }
+        // (a frame's call: shown when it is not the round's loop's, or it has time)
+        if (x->fn == 0x255002AC && x->v[0] == 0x29B9 && x->v[2] == 0 && !getenv("ALLFRAMES")) continue;
+        if (idle) printf("    (%u frames with no time)\n", idle), idle = 0;
+        if (x->fn == 0x57524954)
+          printf("    step %zu write %04X at %04X:%04X, ticks %u\n", x->step, x->v[0], x->v[1], x->v[2], x->v[3]);
+        else if (x->fn == 0x255002AC || x->fn == 0x1EB63624)
+          printf("    step %zu %s from %04X:%04X, cef6 %u, ticks %u, interrupts %u\n", x->step, x->fn == 0x255002AC ? "frame" : "logic", x->v[1], x->v[0], x->v[2], x->v[3], x->v[4]);
+        else if (x->fn == 0x1EB61E84)
+        {
+          printf("    step %zu miss: [bp-12h] %04X (bp %04X sp %04X), ticks %u, interrupts %u, cef6 %u, written at %04X:%04X\n", x->step, x->v[0], x->v[1], x->v[2], x->v[3],
+                 x->v[4], x->v[5], x->v[6], x->v[7]);
+#ifdef FASTCHECK_TRACE
+          for (size_t j = x->writes >= 16 ? x->writes - 16 : 0; watchOff >= 0 && j < x->writes; j++)
+            printf("      write: step %zu frame %llu ticks %u: %04X at %04X:%04X\n", watched[r][j].step, (unsigned long long)watched[r][j].frames, watched[r][j].ticks,
+                   watched[r][j].value, watched[r][j].ip >> 16, watched[r][j].ip & 0xFFFF);
+#endif
+        }
+        else
+          printf("    step %zu %s: cef6 %u cc58 %u a478 %u 6240 %u c700 %u c89c %u ticks %u interrupts %u\n", x->step,
+                 x->fn == 0x25BB063E ? "frame time" : x->fn == 0x25BB018E ? "time paused" : "time resumed",
+                 x->v[0], x->v[1], x->v[2], x->v[3], x->v[4], x->v[5], x->v[6], x->v[7]);
+      }
+    }
+#ifdef FASTCHECK_TRACE
+#endif
     return 1;
   }
   // the steps' ends: the same frame ends passed (a solution's rows), the same ticks and timer interrupts (the game may

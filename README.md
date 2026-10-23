@@ -23,11 +23,13 @@ The game's files are not included: the two floppies' images (disk1.img, disk2.im
   only draws into (its screen and drawing buffers) can be left out (`o4db_set_unsaved`): about 60 KB a fight's state.
 - The machine's speed is a setting (`o4db_set_speed`, DOSBox's cycles, 22,000 by default; Chimera's core's CPU
   Speed). At 220,000 every frame of the game fits in one of its timer's 10 ms ticks, and its fight goes the same
-  whatever its frames draw. There `o4db_set_fast` runs the fight's logic alone: no scene nor world transforms drawn,
-  the frames with nothing to do and the busy waits on the timer skipped to its next tick. One bug of the game's ties
-  its fight to its drawing: a punch that misses takes the defender's stamina by a local variable never set, the
-  stack's garbage of the last frame drawn; the fast machine notices the read and runs that step again with whole
-  frames drawn before its tick. A JaffarPlus search of a fight evaluates about half a million states a second.
+  whatever its frames draw. There `o4db_set_fast` runs a round's logic alone: no scene drawn, the frames with
+  nothing to do and the busy waits on the timer skipped to its next tick. One bug of the game's ties its fight to
+  its drawing: a punch that misses takes the defender's stamina by a local variable never set, the stack's garbage
+  of the last frame drawn; the fast machine notices the read and runs that step again with whole frames drawn before
+  its tick (all but about one miss in 200 then read the game's garbage; the rest, a timer interrupt's in the middle
+  of the game's drawing, cannot be known without it). A round's end, its break and the next round's start go as
+  the game's (the time the game's drawing takes there is lost to its clock).
 
 ## Tests
 
