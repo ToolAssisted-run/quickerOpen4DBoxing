@@ -50,10 +50,29 @@ uint64_t o4db_run_ahead(const O4dbInput *inputs, size_t n, size_t avail);
 // (tests) a function called at every frame end, before its input is given, with the frame ends passed before it
 void o4db_set_frame_hook(void (*hook)(uint64_t frame, void *ctx), void *ctx);
 
+// Steps that end where the game reads its controls: a run of n inputs (o4db_step) ends at the first stop after the
+// program enters the function at fn (its Ghidra address, asm2c's FN numbering: 0x25BB0202 the boxers' controls, read
+// by the timer's interrupt) once the step has passed a frame end, or after maxFrames frame ends (0: no limit) if the
+// game reads none (between rounds, the menus). fn 0: steps are frames.
+void o4db_set_step_function(uint32_t fn, unsigned maxFrames);
+// One step with this input given at every frame end it passes; the frame ends passed (0 once the program has ended)
+uint64_t o4db_step(const O4dbInput *input);
+// Entries of the step function so far (a step that passes none of them is the game not reading its controls)
+uint64_t o4db_step_function_entries(void);
+
 // The machine's state: its size, a copy of it, the state taken back (on any thread with the same setup)
 size_t o4db_state_size(void);
 void o4db_save(void *out);
 void o4db_load(const void *in);
+
+// The same as the memory pages that differ from a reference: the machine's memory now (the first machine of the
+// process to call it sets it; the others' must be the same: the count of pages that are not is returned), and the
+// states as the pages of the memory (256 bytes each, at most maxPages) that differ from it, with the rest of the
+// machine. o4db_save_delta answers the pages it took, or -1 when there are more than maxPages (nothing saved).
+int o4db_set_reference(void);
+size_t o4db_delta_size(unsigned maxPages);
+int o4db_save_delta(void *out, unsigned maxPages);
+void o4db_load_delta(const void *in, unsigned maxPages);
 
 // What the machine shows and holds
 uint8_t *o4db_memory(void);                // the megabyte (and the 64 KB past it)
@@ -64,6 +83,10 @@ const uint8_t (*o4db_palette(void))[3];    // the DAC: 256 colours of 6-bit comp
 uint64_t o4db_frames(void);                 // the frame ends passed since the start
 int o4db_exited(void);                      // the program ended
 int o4db_open_files(void);                  // the game's files open on the host (a state with some does not move)
+// Where the program stopped: its call chain (the shadow stack's call sites, from the program's entry, the last its
+// backward jump) and its stack pointer (SS = DS: the stack from it to the stack's top is the program's locals)
+const uint32_t *o4db_chain(int *length);   // (an element a uint32_t, then 4 bytes of an indirect call's target)
+uint16_t o4db_stack_pointer(void);
 
 #ifdef __cplusplus
 }

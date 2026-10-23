@@ -17,6 +17,7 @@ quickerOpen4DBoxingLib = static_library('quickerOpen4DBoxing', quickerOpen4DBoxi
   include_directories : quickerOpen4DBoxingIncludes,
 )
 
+# (JaffarPlus takes the input parser, inputParser.hpp, and machine.h from source/)
 quickerOpen4DBoxingDependency = declare_dependency(
   link_whole : quickerOpen4DBoxingLib,
   include_directories : include_directories('.'),

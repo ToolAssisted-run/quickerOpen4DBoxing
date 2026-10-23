@@ -191,7 +191,31 @@ static void apply_buttons(const O4dbInput *in)
   }
 }
 
-// A frame end: the run's next input given (its last held), and a stop due once the run's are given
+// Steps ended by the game reading its controls (o4db_set_step_function): the function, the frames at most, and the
+// run in progress being such a step
+static O4DB_TLS uint32_t stepFn;
+static O4DB_TLS unsigned stepMaxFrames;
+static O4DB_TLS int stepping;
+static O4DB_TLS uint64_t stepFnEntries;
+void cheats_fn(uint32_t addr);
+static void machine_fn(uint32_t addr)
+{
+  if (addr == stepFn)
+  {
+    stepFnEntries++;
+    if (stepping && runIndex >= 1) asm_yield_req = 1;
+  }
+  cheats_fn(addr);
+}
+void o4db_set_step_function(uint32_t fn, unsigned maxFrames)
+{
+  stepFn = fn;
+  stepMaxFrames = maxFrames;
+}
+uint64_t o4db_step_function_entries(void) { return stepFnEntries; }
+
+// A frame end: the run's next input given (its last held), and a stop due once the run's are given (a step: when the
+// game read its controls after a frame end of the step, or at its last frame)
 static bool host_frame(void *ctx, uint64_t frame)
 {
   (void)ctx, (void)frame;
@@ -199,7 +223,7 @@ static bool host_frame(void *ctx, uint64_t frame)
   M.frames++;
   apply_buttons(&runInputs[runIndex < runAvail ? runIndex : runAvail - 1]);
   runIndex++;
-  if (runIndex >= runCount) asm_yield_req = 1;
+  if (stepping ? (stepMaxFrames && runIndex >= stepMaxFrames) : runIndex >= runCount) asm_yield_req = 1;
   return true;
 }
 
@@ -213,6 +237,15 @@ void asm_yield(u32 site)
 }
 
 uint64_t o4db_run(const O4dbInput *inputs, size_t n) { return o4db_run_ahead(inputs, n, n); }
+
+uint64_t o4db_step(const O4dbInput *input)
+{
+  if (!stepFn) return o4db_run(input, 1);
+  stepping = 1;
+  const uint64_t f = o4db_run_ahead(input, 1, 1);
+  stepping = 0;
+  return f;
+}
 
 uint64_t o4db_run_ahead(const O4dbInput *inputs, size_t n, size_t avail)
 {
@@ -231,6 +264,7 @@ uint64_t o4db_run_ahead(const O4dbInput *inputs, size_t n, size_t avail)
       // Chimera's first step: its buttons before the game starts
       M.booted = 1;
       threadReady = 1;
+      asm_fn_hook = machine_fn;
       apply_buttons(&M.boot);
       asm_unclean = 0;
       asm_sdepth = 0;
@@ -288,6 +322,7 @@ void o4db_load(const void *in)
   // a thread whose machine never started has not its setup (the hooks, DOS, the program's loading): made first
   if (!threadReady)
   {
+    asm_fn_hook = machine_fn;
     game_setup(&host);
     threadReady = 1;
   }
@@ -295,6 +330,81 @@ void o4db_load(const void *in)
   memcpy(&M, p, sizeof M);
   p += sizeof M;
   o4db_state_all(load_part, &p);
+}
+
+// ------------------------------------------------------------------------------------------- the states as deltas
+
+#define PAGE 256
+#define PAGES (sizeof g_mem / PAGE)
+static pthread_mutex_t referenceLock = PTHREAD_MUTEX_INITIALIZER;
+static uint8_t *reference;  // the process's (every machine's states are deltas from the same memory)
+
+int o4db_set_reference(void)
+{
+  int differ = 0;
+  pthread_mutex_lock(&referenceLock);
+  if (!reference)
+  {
+    reference = malloc(sizeof g_mem);
+    memcpy(reference, g_mem, sizeof g_mem);
+  }
+  else
+    for (size_t p = 0; p < PAGES; p++) differ += memcmp(reference + p * PAGE, g_mem + p * PAGE, PAGE) != 0;
+  pthread_mutex_unlock(&referenceLock);
+  return differ;
+}
+
+// the rest of the machine: the visitors' parts but the memory
+static void count_rest(void *data, size_t size, void *c) { if (data != (void *)g_mem) *(size_t *)c += size; }
+static void save_rest(void *data, size_t size, void *c) { if (data != (void *)g_mem) save_part(data, size, c); }
+static void load_rest(void *data, size_t size, void *c) { if (data != (void *)g_mem) load_part(data, size, c); }
+
+size_t o4db_delta_size(unsigned maxPages)
+{
+  size_t n = sizeof M + sizeof(uint16_t) * (1 + maxPages) + (size_t)PAGE * maxPages;
+  o4db_state_all(count_rest, &n);
+  return n;
+}
+
+int o4db_save_delta(void *out, unsigned maxPages)
+{
+  uint8_t *p = out;
+  memcpy(p, &M, sizeof M);
+  p += sizeof M;
+  o4db_state_all(save_rest, &p);
+  uint16_t *count = (uint16_t *)p, *index = count + 1;
+  uint8_t *pages = (uint8_t *)(index + maxPages);
+  unsigned n = 0;
+  for (size_t k = 0; k < PAGES; k++)
+    if (memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
+    {
+      if (n == maxPages) return -1;
+      index[n] = (uint16_t)k;
+      memcpy(pages + (size_t)n * PAGE, g_mem + k * PAGE, PAGE);
+      n++;
+    }
+  *count = (uint16_t)n;
+  memset(index + n, 0, sizeof *index * (maxPages - n));
+  memset(pages + (size_t)n * PAGE, 0, (size_t)PAGE * (maxPages - n));
+  return (int)n;
+}
+
+void o4db_load_delta(const void *in, unsigned maxPages)
+{
+  if (!threadReady)
+  {
+    asm_fn_hook = machine_fn;
+    game_setup(&host);
+    threadReady = 1;
+  }
+  const uint8_t *p = in;
+  memcpy(&M, p, sizeof M);
+  p += sizeof M;
+  o4db_state_all(load_rest, &p);
+  const uint16_t *count = (const uint16_t *)p, *index = count + 1;
+  const uint8_t *pages = (const uint8_t *)(index + maxPages);
+  memcpy(g_mem, reference, sizeof g_mem);
+  for (unsigned k = 0; k < *count; k++) memcpy(g_mem + (size_t)index[k] * PAGE, pages + (size_t)k * PAGE, PAGE);
 }
 
 uint8_t *o4db_memory(void) { return g_mem; }
@@ -305,3 +415,9 @@ const uint8_t (*o4db_palette(void))[3] { return game_palette(); }
 uint64_t o4db_frames(void) { return M.frames; }
 int o4db_exited(void) { return M.exited; }
 int o4db_open_files(void) { return dos_open_host_files(); }
+const uint32_t *o4db_chain(int *length)
+{
+  *length = asm_chain;
+  return (const uint32_t *)asm_shadow;
+}
+uint16_t o4db_stack_pointer(void) { return R.sp; }
