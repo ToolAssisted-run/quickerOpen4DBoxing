@@ -6,7 +6,8 @@
 // "." none; or Chimera's rows, a JaffarPlus solution), the last line held to STEPS. Each step printed: the round's clock, the boxers' distance, the opponent's
 // decision (234a:0012's last input, DS:89F9: 1 up 2 down 4 right 8 left, 0x10 the steps' button, 0x20 a punch), his
 // punch (+0x28, its definition +0x30), both boxers' places, headings and postures, the player's health, stamina,
-// punches thrown and landed, the opponent's health
+// punches thrown and landed, the opponent's health. The environment's STATE: a saved machine (o4dbBench save,
+// o4dbBreak SAVE: at SPEED, the machine set up at it) instead of the movie played (its first row still the first input)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,16 +82,29 @@ int main(int argc, char **argv)
   fclose(pf);
   if (!nPlan) { fprintf(stderr, "o4dbAIWatch: an empty plan\n"); return 1; }
   const size_t steps = argc > 4 ? strtoull(argv[4], NULL, 10) : nPlan;
-  o4db_set_speed(getenv("INITIAL_SPEED") ? (uint32_t)strtoul(getenv("INITIAL_SPEED"), NULL, 10) : 22000);
+  const uint32_t speed = getenv("SPEED") ? (uint32_t)strtoul(getenv("SPEED"), NULL, 10) : 220000;
+  o4db_set_speed(getenv("STATE") ? speed : getenv("INITIAL_SPEED") ? (uint32_t)strtoul(getenv("INITIAL_SPEED"), NULL, 10) : 22000);
   if (!o4db_setup(argv[1], "mt32", "1991-07-30 14:47:00", NULL)) { fprintf(stderr, "%s\n", o4db_error()); return 1; }
   O4dbInput *in = malloc(n * sizeof *in);
   for (size_t k = 0; k < n; k++) in[k] = (O4dbInput){ rows[k].buttons, rows[k].mouseX, rows[k].mouseY };
   pokes_load();
   o4db_set_frame_hook(frame_hook, NULL);
   o4db_new(&in[0]);
-  o4db_run(in + 1, n - 1);
+  if (getenv("STATE"))
+  {
+    FILE *f = fopen(getenv("STATE"), "rb");
+    void *st = malloc(o4db_state_size());
+    if (!f || fread(st, 1, o4db_state_size(), f) != o4db_state_size()) { fprintf(stderr, "o4dbAIWatch: no state in %s\n", getenv("STATE")); return 1; }
+    fclose(f);
+    o4db_load(st);
+    free(st);
+  }
+  else
+  {
+    o4db_run(in + 1, n - 1);
+    o4db_test_set_cycles(speed);
+  }
   o4db_set_frame_hook(NULL, NULL);
-  o4db_test_set_cycles(getenv("SPEED") ? (uint32_t)strtoul(getenv("SPEED"), NULL, 10) : 220000);
   o4db_set_step_function(0x25BB0202, 8);
   o4db_set_fast(getenv("FAST") ? atoi(getenv("FAST")) : 1);
 #ifdef AIWATCH_TRACE
