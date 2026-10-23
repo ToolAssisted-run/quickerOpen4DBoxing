@@ -7,7 +7,8 @@
 // The environment's SPEED: the machine's (o4db_set_speed), the project's CPU speed; INITIAL_SPEED (experiments): the
 // initial sequence's, the machine switched to SPEED at its end (as the emulator's "Initial Speed"); FASTCHECK: the steps
 // also run as the fast fight (o4db_set_fast, as the emulator's "Fast Fight") from the same start, its boxers' steps
-// (1eb6:3354) and its steps' frames compared with the game's.
+// (1eb6:3354) and its steps' frames compared with the game's; STATE: the machine's state after INITIAL's rows
+// (o4dbBench save) loaded instead of playing them, and OUT only the solution's rows (to follow INITIAL's).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,10 +87,25 @@ int main(int argc, char **argv)
   pokes_load();
   o4db_set_frame_hook(frame_hook, NULL);
   o4db_new(&init[0]);
-  write_row(out, &init[0]);
-  const uint64_t f0 = ni > 1 ? o4db_run(init + 1, ni - 1) : 0;
-  for (size_t k = 1; k < ni; k++) write_row(out, &init[k]);
-  for (uint64_t k = ni > 1 ? ni - 1 : 0; k < f0; k++) write_row(out, &init[ni - 1]);  // (held to the stop)
+  uint64_t f0;
+  if (getenv("STATE"))
+  {
+    // (the state after the initial rows: only the solution's rows written)
+    FILE *f = fopen(getenv("STATE"), "rb");
+    void *st = malloc(o4db_state_size());
+    if (!f || fread(st, 1, o4db_state_size(), f) != o4db_state_size()) { fprintf(stderr, "o4dbSteps2Rows: no state in %s\n", getenv("STATE")); return 1; }
+    fclose(f);
+    o4db_load(st);
+    free(st);
+    f0 = o4db_frames();
+  }
+  else
+  {
+    write_row(out, &init[0]);
+    f0 = ni > 1 ? o4db_run(init + 1, ni - 1) : 0;
+    for (size_t k = 1; k < ni; k++) write_row(out, &init[k]);
+    for (uint64_t k = ni > 1 ? ni - 1 : 0; k < f0; k++) write_row(out, &init[ni - 1]);  // (held to the stop)
+  }
   if (initialSpeed != speed) o4db_test_set_cycles(speed);
   o4db_set_step_function(0x25BB0202, maxFrames);
   uint64_t frames = f0;
