@@ -1,5 +1,12 @@
 // A machine's state saved after a movie's rows, or loaded and run for some frames (a benchmark, a profile's run):
-//   o4dbBench GAMEDIR save MOVIE OUT     the movie played, its machine saved to OUT
+//   o4dbBench GAMEDIR save MOVIE OUT     the movie played, its machine saved to OUT (the environment's ROWS: the rows
+//                                        played written there, the movie's and its last again at each frame end the
+//                                        stop after it passed: Chimera's rows to the state)
+//   o4dbBench GAMEDIR same MOVIE STATE   the movie played, its machine compared with STATE's (a movie from the start,
+//                                        Chimera's: does it reach the machine a pipeline saved?)
+//   (save, same: the environment's POKES given during the movie; INITIAL_SPEED and INITIAL_ROWS, experiments: the
+//   movie's first rows played at that speed, the machine switched to SPEED where they stop, the rows the stop passed
+//   skipped, as o4dbSteps2Rows's and the emulator's "Initial Speed")
 //   o4dbBench GAMEDIR run STATE FRAMES   STATE loaded, FRAMES frames run with nothing pressed (the time printed)
 //   o4dbBench GAMEDIR steps STATE N      STATE loaded, N steps (the controls' reads) run with nothing pressed
 //   (the environment's SPEED: the machine's speed, o4db_set_speed, as the state's; SKIP: o4db_test_hooks's parts
@@ -12,25 +19,63 @@
 
 #include "machine.h"
 #include "movie.h"
+#include "pokes.h"
+
+static void frame_hook(uint64_t frame, void *ctx) { (void)ctx; pokes_apply(frame); }
 
 int main(int argc, char **argv)
 {
-  if (argc < 5) { fprintf(stderr, "usage: o4dbBench GAMEDIR save MOVIE OUT | run STATE FRAMES\n"); return 2; }
-  if (getenv("SPEED")) o4db_set_speed((uint32_t)strtoul(getenv("SPEED"), NULL, 10));
+  if (argc < 5) { fprintf(stderr, "usage: o4dbBench GAMEDIR save MOVIE OUT | same MOVIE STATE | run STATE FRAMES | steps STATE N\n"); return 2; }
+  const int playing = !strcmp(argv[2], "save") || !strcmp(argv[2], "same");
+  const size_t initialRows = playing && getenv("INITIAL_SPEED") && getenv("INITIAL_ROWS") ? strtoull(getenv("INITIAL_ROWS"), NULL, 10) : 0;
+  if (initialRows) o4db_set_speed((uint32_t)strtoul(getenv("INITIAL_SPEED"), NULL, 10));
+  else if (getenv("SPEED")) o4db_set_speed((uint32_t)strtoul(getenv("SPEED"), NULL, 10));
   if (!o4db_setup(argv[1], "mt32", "1991-07-30 14:47:00", NULL)) { fprintf(stderr, "%s\n", o4db_error()); return 1; }
-  if (!strcmp(argv[2], "save"))
+  if (playing)
   {
     size_t n;
     MovieInput *rows = movie_load(argv[3], &n);
+    if (!rows || !n) { fprintf(stderr, "o4dbBench: no movie in %s\n", argv[3]); return 1; }
     O4dbInput *in = malloc(n * sizeof *in);
     for (size_t k = 0; k < n; k++) in[k] = (O4dbInput){ rows[k].buttons, rows[k].mouseX, rows[k].mouseY };
+    pokes_load();
+    o4db_set_frame_hook(frame_hook, NULL);
     o4db_new(&in[0]);
-    o4db_run(in + 1, n - 1);
+    uint64_t frames = 0;
+    if (initialRows > 1)
+    {
+      frames = o4db_run(in + 1, (initialRows < n ? initialRows : n) - 1);
+      if (getenv("SPEED")) o4db_test_set_cycles((uint32_t)strtoul(getenv("SPEED"), NULL, 10));
+    }
+    if (frames + 1 < n) frames += o4db_run(in + 1 + frames, n - 1 - frames);
+    o4db_set_frame_hook(NULL, NULL);
+    printf("%zu rows, %llu frame ends after the first\n", n, (unsigned long long)frames);
     uint8_t *s = malloc(o4db_state_size());
     o4db_save(s);
+    if (!strcmp(argv[2], "same"))
+    {
+      uint8_t *t = malloc(o4db_state_size());
+      FILE *f = fopen(argv[4], "rb");
+      if (!f || fread(t, 1, o4db_state_size(), f) != o4db_state_size()) { fprintf(stderr, "o4dbBench: no state in %s\n", argv[4]); return 1; }
+      fclose(f);
+      size_t differ = 0;
+      for (size_t k = 0; k < o4db_state_size(); k++)
+        if (s[k] != t[k] && differ++ < 8) printf("  state byte %zu: %02X played, %02X saved\n", k, s[k], t[k]);
+      if (differ) printf("%zu bytes differ\n", differ);
+      else printf("the same machine\n");
+      return differ ? 1 : 0;
+    }
     FILE *f = fopen(argv[4], "wb");
     fwrite(s, 1, o4db_state_size(), f);
     fclose(f);
+    if (getenv("ROWS"))
+    {
+      FILE *out = fopen(getenv("ROWS"), "w");
+      if (!out) { fprintf(stderr, "o4dbBench: cannot write %s\n", getenv("ROWS")); return 1; }
+      for (size_t k = 0; k < n; k++) movie_write_row(out, in[k].buttons, in[k].mouseX, in[k].mouseY);
+      for (uint64_t k = n - 1; k < frames; k++) movie_write_row(out, in[n - 1].buttons, in[n - 1].mouseX, in[n - 1].mouseY);  // (held to the stop)
+      fclose(out);
+    }
     return 0;
   }
   uint8_t *s = malloc(o4db_state_size());

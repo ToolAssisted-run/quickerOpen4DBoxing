@@ -8,8 +8,9 @@
 // initial sequence's, the machine switched to SPEED at its end (as the emulator's "Initial Speed"); FASTCHECK: the steps
 // also run as the fast fight (o4db_set_fast, as the emulator's "Fast Fight") from the same start, its boxers' steps
 // (1eb6:3354) and its steps' frames compared with the game's; STATE: the machine's state after INITIAL's rows
-// (o4dbBench save) loaded instead of playing them, and OUT only the solution's rows (to follow INITIAL's); SAVE_END: the
-// game's machine after the steps saved there (a verified round's end, for o4dbBreak's STATE).
+// (o4dbBench save, at SPEED: a machine's speed is not in its state, the machine set up at SPEED) loaded instead of
+// playing them, and OUT only the solution's rows (to follow INITIAL's); SAVE_END: the game's machine after the steps
+// saved there (a verified round's end, for o4dbBreak's STATE).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,12 +57,7 @@ static void event_hook(uint32_t fn)
   for (size_t p = 0; p < sizeof parts / sizeof *parts; p++) { memcpy(e->bytes + e->n, dseg() + parts[p][0], parts[p][1]); e->n += parts[p][1]; }
 }
 
-static void write_row(FILE *f, const O4dbInput *in)
-{
-  fprintf(f, "|%5d,%5d,", in->mouseX, in->mouseY);
-  for (int k = 0; k < 57; k++) fputc((in->buttons >> k) & 1 ? k_mnemonics[k] : '.', f);
-  fputs("|\n", f);
-}
+static void write_row(FILE *f, const O4dbInput *in) { movie_write_row(f, in->buttons, in->mouseX, in->mouseY); }
 
 static O4dbInput *load(const char *path, size_t *n)
 {
@@ -81,7 +77,7 @@ int main(int argc, char **argv)
   const unsigned maxFrames = argc > 5 ? (unsigned)atoi(argv[5]) : 8;
   const uint32_t speed = getenv("SPEED") ? (uint32_t)strtoul(getenv("SPEED"), NULL, 10) : 22000;
   const uint32_t initialSpeed = getenv("INITIAL_SPEED") ? (uint32_t)strtoul(getenv("INITIAL_SPEED"), NULL, 10) : speed;
-  o4db_set_speed(initialSpeed);
+  o4db_set_speed(getenv("STATE") ? speed : initialSpeed);
   if (!o4db_setup(argv[1], argc > 6 ? argv[6] : "mt32", argc > 7 ? argv[7] : "1991-07-30 14:47:00", NULL)) { fprintf(stderr, "%s\n", o4db_error()); return 1; }
   FILE *out = fopen(argv[4], "w");
   printHashes = getenv("HASHES") != NULL;
@@ -107,7 +103,7 @@ int main(int argc, char **argv)
     for (size_t k = 1; k < ni; k++) write_row(out, &init[k]);
     for (uint64_t k = ni > 1 ? ni - 1 : 0; k < f0; k++) write_row(out, &init[ni - 1]);  // (held to the stop)
   }
-  if (initialSpeed != speed) o4db_test_set_cycles(speed);
+  if (!getenv("STATE") && initialSpeed != speed) o4db_test_set_cycles(speed);
   o4db_set_step_function(0x25BB0202, maxFrames);
   uint64_t frames = f0;
   const int fastCheck = getenv("FASTCHECK") != NULL;

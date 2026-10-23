@@ -60,6 +60,14 @@ static MovieInput *movie_load(const char *path, size_t *n)
   return in;
 }
 
+// a row as Chimera's: the mouse's place, then a mnemonic or '.' per button
+static void movie_write_row(FILE *f, uint64_t buttons, int x, int y)
+{
+  fprintf(f, "|%5d,%5d,", x, y);
+  for (int k = 0; k < 57; k++) fputc((buttons >> k) & 1 ? k_mnemonics[k] : '.', f);
+  fputs("|\n", f);
+}
+
 // FNV-1a over a block
 static uint64_t hash_bytes(const uint8_t *p, size_t n, uint64_t h)
 {

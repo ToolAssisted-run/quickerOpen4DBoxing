@@ -16,8 +16,10 @@
 #include "pokes.h"
 
 #define MEM 0x100000
-// (the pictures the JaffarPlus emulator leaves out of its states: not 51000-51FFF, which the fast fight reads)
-static const uint32_t unsaved[][2] = { { 0xA0000, 0xAFFFF }, { 0x68000, 0x71FFF }, { 0x88000, 0x88FFF } };
+// (the pictures the JaffarPlus emulator leaves out of its states: not 51000-51FFF, which the fast fight reads; the
+// environment's EXTRA_UNSAVED, "START-END" hexadecimal, one more region tried)
+static uint32_t unsaved[4][2] = { { 0xA0000, 0xAFFFF }, { 0x68000, 0x71FFF }, { 0x88000, 0x88FFF } };
+static size_t nUnsaved = 3;
 
 // (the environment's SCRAMBLE: after every delta loaded, the unsaved memory filled with noise, as a search's thread
 // leaves there whatever its last state drew; the steps must not read it)
@@ -28,7 +30,7 @@ static void load_state(const void *delta, unsigned maxPages)
   o4db_load_delta(delta, maxPages);
   if (!scramble) return;
   uint8_t *m = o4db_memory();
-  for (size_t k = 0; k < sizeof unsaved / sizeof *unsaved; k++)
+  for (size_t k = 0; k < nUnsaved; k++)
     for (uint32_t a = unsaved[k][0]; a <= unsaved[k][1]; a++)
     {
       noise ^= noise << 13; noise ^= noise >> 7; noise ^= noise << 17;
@@ -39,7 +41,7 @@ static void load_state(const void *delta, unsigned maxPages)
 static void frame_hook(uint64_t frame, void *ctx) { (void)ctx; pokes_apply(frame); }
 static int saved_page(uint32_t page)
 {
-  for (size_t k = 0; k < sizeof unsaved / sizeof *unsaved; k++)
+  for (size_t k = 0; k < nUnsaved; k++)
     if (page * 256 >= unsaved[k][0] && page * 256 <= unsaved[k][1]) return 0;
   return 1;
 }
@@ -75,7 +77,7 @@ static void make(void)
   if (initial != speed) o4db_test_set_cycles(speed);
   o4db_set_step_function(0x25BB0202, 8);
   o4db_set_fast(getenv("FAST") ? atoi(getenv("FAST")) : 1);
-  for (size_t k = 0; k < sizeof unsaved / sizeof *unsaved; k++) o4db_set_unsaved(unsaved[k][0], unsaved[k][1]);
+  for (size_t k = 0; k < nUnsaved; k++) o4db_set_unsaved(unsaved[k][0], unsaved[k][1]);
   const int differ = o4db_set_reference();
   if (differ) printf("this thread's machine differs from the first one's in %d pages\n", differ);
 }
@@ -95,6 +97,24 @@ static void *replay(void *arg)
     memcpy(seq + k * (size_t)MEM, o4db_memory(), MEM);
   }
   printf("replayed: %zu steps (%llu replays of steps), %d pages at most in a state\n", ns, (unsigned long long)o4db_fast_replays(), most);
+  // (PAGEMAP: the last state's delta pages, in runs)
+  if (getenv("PAGEMAP"))
+  {
+    void *last = malloc(deltaSize);
+    o4db_save_delta(last, maxPages);
+    const uint8_t *p = last;
+    size_t off = o4db_delta_size(maxPages) - (size_t)maxPages * 256 - 2 - (size_t)maxPages * 2;  // (the machine and the rest before the count)
+    const uint16_t count = (uint16_t)(p[off] | p[off + 1] << 8), *index = (const uint16_t *)(p + off + 2);
+    printf("the last state: %u pages differ from the start:", count);
+    for (unsigned k = 0; k < count;)
+    {
+      unsigned j = k;
+      while (j + 1 < count && index[j + 1] == index[j] + 1) j++;
+      printf(" %05X-%05X(%u)", index[k] * 256, index[j] * 256 + 255, j - k + 1);
+      k = j + 1;
+    }
+    printf("\n");
+  }
   return NULL;
 }
 
@@ -106,6 +126,11 @@ int main(int argc, char **argv)
   steps = load(argv[3], &ns);
   pokes_load();
   scramble = getenv("SCRAMBLE") != NULL;
+  if (getenv("EXTRA_UNSAVED"))
+  {
+    unsigned a, b;
+    if (sscanf(getenv("EXTRA_UNSAVED"), "%x-%x", &a, &b) == 2) unsaved[nUnsaved][0] = a, unsaved[nUnsaved][1] = b, nUnsaved++;
+  }
   maxPages = getenv("PAGES") ? (unsigned)atoi(getenv("PAGES")) : 192;
   seq = malloc(ns * (size_t)MEM);
   const int threads = getenv("THREADS") ? atoi(getenv("THREADS")) : 1;
