@@ -130,6 +130,9 @@ int main(int argc, char **argv)
            sw(0xBB06 + 6), sw(0xBB06 + 0xA), dw(0xBB06 + 4), dw(0xBB06 + 0x16), sw(0xBA12 + 0x10), sw(0xBA12 + 0xE), dw(0xA488 + 6), dw(0xA488 + 8),
            sw(0xBB06 + 0x10));
     if (getenv("HIS_PUNCHES")) printf("      his punches: thrown %u landed %u\n", dw(0xA4FC + 6), dw(0xA4FC + 8));
+    // (DEFENSE: both boxers' guards (+0x40) and leans (+0x48), the player's input byte as the game took it)
+    if (getenv("DEFENSE"))
+      printf("      guard %u lean %d punching %u / his guard %u lean %d\n", dw(0xBA12 + 0x40), sw(0xBA12 + 0x48), dw(0xBA12 + 0x28), dw(0xBB06 + 0x40), sw(0xBB06 + 0x48));
     const uint16_t blk = dw(0xBB06 + 2);
     printf("      block %04X: %6d %6d %6d %6d %6d %6d\n", blk, sw(blk), sw((uint16_t)(blk + 2)), sw((uint16_t)(blk + 4)), sw((uint16_t)(blk + 0xC)), sw((uint16_t)(blk + 0x1C)),
            sw((uint16_t)(blk + 0x2E)));
