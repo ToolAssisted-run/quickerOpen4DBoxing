@@ -292,6 +292,8 @@ void asm_int(u8 n)
 // the BIOS's and DOS's own services (the program's handlers chain to them through the vectors they saved)
 void asm_bios_service(u8 n)
 {
+  if (n == 0x09 || n == 0x16 || n == 0x1A || n == 0x33 || n == 0x15 || n == 0x74) asm_dirty[4] = 1;
+  else asm_dirty_all = 1;
   if (asm_int_hook && asm_int_hook(n)) return;
   u8 ah = (u8)(R.ax >> 8), al = (u8)R.ax;
   if (n == 0x10)

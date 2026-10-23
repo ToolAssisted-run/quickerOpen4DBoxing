@@ -25242,6 +25242,7 @@ static void a_1b1d_115a(void)
 {
   if (asm_resuming) switch (ASM_RSITE()) { case 2508: ASM_RCALL(); goto R_2508; case 2509: ASM_RCALL(); goto R_2509; case 2510: ASM_RCALL(); goto R_2510; case 2511: ASM_RCALL(); goto R_2511; case 2512: ASM_RCALL(); goto R_2512; case 2513: ASM_RCALL(); goto R_2513; case 2514: ASM_RCALL(); goto R_2514; case 2515: ASM_RCALL(); goto R_2515; case 2516: ASM_RCALL(); goto R_2516; case 2517: ASM_RCALL(); goto R_2517; case 2518: ASM_RCALL(); goto R_2518; case 2519: ASM_RCALL(); goto R_2519; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x1B1D115A);
+  if (asm_skip_draw) { R.sp += 4; return; }
   R.cs = 0x1340;
   ASM_I(0x115a); ASM_BLOCK(7, 0x115a); PUSH(R.bp);             // 115a push bp
   ASM_I(0x115b); R.bp = (u16)(R.sp);                           // 115b mov bp, sp

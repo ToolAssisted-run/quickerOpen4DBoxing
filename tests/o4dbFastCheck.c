@@ -101,10 +101,13 @@ int main(int argc, char **argv)
   Event *ends[2] = { malloc(steps * sizeof(Event)), malloc(steps * sizeof(Event)) };
   double seconds[2];
   o4db_test_hooks(event_hook, 0);
-  for (run = 0; run < 2; run++)
+  // (the environment's ONLYFAST: the fast fight alone, for a profile)
+  for (run = getenv("ONLYFAST") ? 1 : 0; run < 2; run++)
   {
     o4db_load(state);
     o4db_set_fast(run);
+    // (the environment's FASTSKIP: o4db_test_hooks's parts skipped in the fast fight)
+    o4db_test_hooks(event_hook, run && getenv("FASTSKIP") ? (unsigned)strtoul(getenv("FASTSKIP"), NULL, 0) : 0);
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
     for (size_t k = 0; k < steps; k++)
@@ -128,6 +131,7 @@ int main(int argc, char **argv)
     o4db_set_fast(0);
   }
   o4db_test_hooks(NULL, 0);
+  if (getenv("ONLYFAST")) { printf("%zu steps: the fast fight %.3f s (%.3f ms a step, %llu replays)\n", steps, seconds[1], seconds[1] * 1000.0 / (double)steps, (unsigned long long)o4db_fast_replays()); return 0; }
   printf("%zu steps: the game %.3f s (%zu boxer steps), the fast fight %.3f s (%zu boxer steps, %llu replays): %.1fx\n", steps, seconds[0], nLog[0], seconds[1], nLog[1],
          (unsigned long long)o4db_fast_replays(), seconds[0] / seconds[1]);
   const size_t common = nLog[0] < nLog[1] ? nLog[0] : nLog[1];

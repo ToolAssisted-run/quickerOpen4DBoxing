@@ -28,7 +28,9 @@ extern O4DB_TLS u8 g_mem[MEM_SIZE];
 static inline u8 *far_ptr(u16 seg, u16 off) { return g_mem + ((u32)seg << 4) + off; }
 static inline u8 mem_r8(u32 a) { return g_mem[a]; }
 static inline u16 mem_r16(u32 a) { return (u16)(g_mem[a] | (g_mem[a + 1] << 8)); }
-static inline void mem_w16(u32 a, u16 v) { g_mem[a] = (u8)v; g_mem[a + 1] = (u8)(v >> 8); }
+extern O4DB_TLS u8 asm_dirty[];
+extern O4DB_TLS int asm_dirty_all;
+static inline void mem_w16(u32 a, u16 v) { g_mem[a] = (u8)v; g_mem[a + 1] = (u8)(v >> 8); asm_dirty[a >> 8] = 1; asm_dirty[(a + 1) >> 8] = 1; }
 
 // the program's data segment: P16(off) is the word at DS:off (for the runtime's looks into its data)
 extern O4DB_TLS u16 g_dsSeg;

@@ -39,6 +39,7 @@ static int started;
 static void *worker(void *arg)
 {
   const int me = (int)(long)arg;
+  if (getenv("SPEED")) o4db_set_speed((uint32_t)strtoul(getenv("SPEED"), NULL, 10));  // (the environment's SPEED: the PC's speed)
   if (!o4db_setup(gameDir, sound, clockStart, NULL)) { fprintf(stderr, "%s\n", o4db_error()); exit(1); }
   o4db_set_frame_hook(frame_hook, NULL);
   O4dbInput boot = in_of(&rows[0]);
@@ -87,6 +88,7 @@ int main(int argc, char **argv)
   }
   else
   {
+    if (getenv("SPEED")) o4db_set_speed((uint32_t)strtoul(getenv("SPEED"), NULL, 10));
     if (!o4db_setup(gameDir, sound, clockStart, NULL)) { fprintf(stderr, "%s\n", o4db_error()); return 1; }
     o4db_set_frame_hook(frame_hook, NULL);
     O4dbInput boot = in_of(&rows[0]);

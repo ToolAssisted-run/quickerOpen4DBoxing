@@ -160,6 +160,7 @@ void o4db_new(const O4dbInput *boot)
     o4db_load_pristine();
   memset(&M, 0, sizeof M);
   asm_fast = asm_skip_draw = 0;  // (a new machine plays the whole game: o4db_set_fast after its start)
+  asm_dirty_all = 1;
   M.boot = boot ? *boot : (O4dbInput){ 0, O4DB_MOUSE_X_NEUTRAL, O4DB_MOUSE_Y_NEUTRAL };
   M.given[0] = O4DB_MOUSE_X_NEUTRAL;
   M.given[1] = O4DB_MOUSE_Y_NEUTRAL;
@@ -264,8 +265,9 @@ uint64_t o4db_run(const O4dbInput *inputs, size_t n) { return o4db_run_ahead(inp
 // The fight's logic depends on the drawing only through the time the drawing takes and one bug of the game's. At a
 // speed where every frame fits in one of the timer's 10 ms ticks (220,000 instructions a millisecond), the time does
 // not matter: the boxers' steps are the ticks', and the frames between two ticks have nothing to do. So the fast
-// machine draws no scene, and at the frames' driver's entry (2550:02ac) with no tick due it lets time go to the next
-// one, event by event (the frame ends with their inputs, the keys, the timer's interrupts, in their order). The bug:
+// machine draws no scene and makes no world transforms of the camera and the boxers (1c47:229c, 1b1d:115a), and at
+// the end of the frames' driver (2550:02ac) with no tick due it lets time go to the next one, event by event (the
+// frame ends with their inputs, the keys, the timer's interrupts, in their order). The bug:
 // a punch that misses (1eb6:19fa's miss path) takes the defender's stamina by a local never set ([bp - 0x12]): the
 // stack's garbage there, left by the game's last whole frame (its drawing, its displays) or by that tick's own
 // logic. The fast machine fills the stack below each tick's frame with a sentinel; when a miss finds it, the step is
@@ -290,7 +292,7 @@ extern uint64_t game_next_event(void);
 extern uint32_t game_cycles(void);
 
 static uint16_t ds_word(uint16_t off) { const uint8_t *d = g_mem + ((uint32_t)g_dsSeg << 4) + off; return (uint16_t)(d[0] | d[1] << 8); }
-static void ds_set(uint16_t off, uint16_t v) { uint8_t *d = g_mem + ((uint32_t)g_dsSeg << 4) + off; d[0] = (uint8_t)v; d[1] = (uint8_t)(v >> 8); }
+static void ds_set(uint16_t off, uint16_t v) { mem_w16(((uint32_t)g_dsSeg << 4) + off, v); }  // (its page marked: mem_w16)
 static int replay_index(uint16_t tick)
 {
   for (int k = 0; k < nReplay; k++)
@@ -377,12 +379,7 @@ void asm_fast_tick(void)
     asm_skip_draw = 0;
     return;
   }
-  uint8_t *stack = g_mem + ((uint32_t)R.ss << 4);
-  for (uint32_t a = (uint32_t)R.sp - FAST_FILL; a + 1 < R.sp; a += 2)
-  {
-    stack[(uint16_t)a] = (uint8_t)FAST_SENTINEL;
-    stack[(uint16_t)(a + 1)] = (uint8_t)(FAST_SENTINEL >> 8);
-  }
+  for (uint32_t a = (uint32_t)R.sp - FAST_FILL; a + 1 < R.sp; a += 2) mem_w16(((uint32_t)R.ss << 4) + (uint16_t)a, FAST_SENTINEL);
 }
 
 // 1eb6:19fa's miss path about to read its local [bp - 0x12]: the sentinel there is no garbage of the game's (the step
@@ -528,6 +525,7 @@ static void o4db_load_pristine(void)
 {
   const uint8_t *p = pristine + sizeof M;
   o4db_state_all(load_part, &p);
+  asm_dirty_all = 1;
 }
 
 size_t o4db_state_size(void)
@@ -558,6 +556,7 @@ void o4db_load(const void *in)
   memcpy(&M, p, sizeof M);
   p += sizeof M;
   o4db_state_all(load_part, &p);
+  asm_dirty_all = 1;
 }
 
 // ------------------------------------------------------------------------------------------- the states as deltas
@@ -616,7 +615,27 @@ int o4db_set_reference(void)
         differ++;
       }
   pthread_mutex_unlock(&referenceLock);
+  // (the memory is the reference now: no page differs)
+  if (!differ)
+  {
+    memset(asm_dirty, 0, PAGES);
+    asm_dirty_all = 0;
+  }
   return differ;
+}
+
+// The pages that may differ from the reference: those written since the last delta was loaded (every write of the
+// program's marks its page, asm2c.h; the runtime's word writes, types.h; the BIOS's services and its tick, the BIOS's
+// data page or everything, asm2c.c and game.c) and the loaded delta's own; every page after a whole state was loaded
+// or a machine made (asm_dirty_all). A delta is then those pages compared, and a load restores only them. (The
+// environment's O4DB_CHECK_DIRTY: every delta's pages also found by comparing all of them, a page missed an abort.)
+O4DB_TLS u8 asm_dirty[PAGES];
+O4DB_TLS int asm_dirty_all = 1;
+static int check_dirty(void)
+{
+  static int check = -1;
+  if (check < 0) check = getenv("O4DB_CHECK_DIRTY") != NULL;
+  return check;
 }
 
 // the rest of the machine: the visitors' parts but the memory
@@ -640,15 +659,45 @@ int o4db_save_delta(void *out, unsigned maxPages)
   uint16_t *count = (uint16_t *)p, *index = count + 1;
   uint8_t *pages = (uint8_t *)(index + maxPages);
   unsigned n = 0;
-  for (unsigned r = 0; r < nSavedRuns; r++)
-    for (size_t k = savedRuns[r].first; k < savedRuns[r].end; k++)
-      if (memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
-      {
-        if (n == maxPages) return -1;
-        index[n] = (uint16_t)k;
-        memcpy(pages + (size_t)n * PAGE, g_mem + k * PAGE, PAGE);
-        n++;
-      }
+  if (asm_dirty_all)
+  {
+    for (unsigned r = 0; r < nSavedRuns; r++)
+      for (size_t k = savedRuns[r].first; k < savedRuns[r].end; k++)
+        if (memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
+        {
+          if (n == maxPages) return -1;
+          index[n] = (uint16_t)k;
+          memcpy(pages + (size_t)n * PAGE, g_mem + k * PAGE, PAGE);
+          n++;
+        }
+  }
+  else
+  {
+    for (size_t w = 0; w < PAGES / 8; w++)
+    {
+      uint64_t marks;
+      memcpy(&marks, asm_dirty + 8 * w, 8);
+      if (!marks) continue;
+      for (size_t k = 8 * w; k < 8 * w + 8; k++)
+        if (asm_dirty[k] && !unsaved[k] && memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
+        {
+          if (n == maxPages) return -1;
+          index[n] = (uint16_t)k;
+          memcpy(pages + (size_t)n * PAGE, g_mem + k * PAGE, PAGE);
+          n++;
+        }
+    }
+    if (check_dirty())
+      for (size_t k = 0; k < PAGES; k++)
+        if (!asm_dirty[k] && !unsaved[k] && memcmp(reference + k * PAGE, g_mem + k * PAGE, PAGE))
+        {
+          size_t first = 0;
+          while (reference[k * PAGE + first] == g_mem[k * PAGE + first]) first++;
+          fprintf(stderr, "quickerOpen4DBoxing: page %05zX differs from the reference unmarked (first at %05zX: %02X, the reference's %02X), frame %llu\n", k * PAGE,
+                  k * PAGE + first, g_mem[k * PAGE + first], reference[k * PAGE + first], (unsigned long long)M.frames);
+          abort();
+        }
+  }
   *count = (uint16_t)n;
   memset(index + n, 0, sizeof *index * (maxPages - n));
   memset(pages + (size_t)n * PAGE, 0, (size_t)PAGE * (maxPages - n));
@@ -669,9 +718,25 @@ void o4db_load_delta(const void *in, unsigned maxPages)
   o4db_state_all(load_rest, &p);
   const uint16_t *count = (const uint16_t *)p, *index = count + 1;
   const uint8_t *pages = (const uint8_t *)(index + maxPages);
-  for (unsigned r = 0; r < nSavedRuns; r++)
-    memcpy(g_mem + (size_t)savedRuns[r].first * PAGE, reference + (size_t)savedRuns[r].first * PAGE, (size_t)(savedRuns[r].end - savedRuns[r].first) * PAGE);
-  for (unsigned k = 0; k < *count; k++) memcpy(g_mem + (size_t)index[k] * PAGE, pages + (size_t)k * PAGE, PAGE);
+  if (asm_dirty_all)
+    for (unsigned r = 0; r < nSavedRuns; r++)
+      memcpy(g_mem + (size_t)savedRuns[r].first * PAGE, reference + (size_t)savedRuns[r].first * PAGE, (size_t)(savedRuns[r].end - savedRuns[r].first) * PAGE);
+  else
+    for (size_t w = 0; w < PAGES / 8; w++)
+    {
+      uint64_t marks;
+      memcpy(&marks, asm_dirty + 8 * w, 8);
+      if (!marks) continue;
+      for (size_t k = 8 * w; k < 8 * w + 8; k++)
+        if (asm_dirty[k] && !unsaved[k]) memcpy(g_mem + k * PAGE, reference + k * PAGE, PAGE);
+    }
+  memset(asm_dirty, 0, PAGES);
+  asm_dirty_all = 0;
+  for (unsigned k = 0; k < *count; k++)
+  {
+    memcpy(g_mem + (size_t)index[k] * PAGE, pages + (size_t)k * PAGE, PAGE);
+    asm_dirty[index[k]] = 1;
+  }
 }
 
 void (*asm_test_hook)(u32 fn);

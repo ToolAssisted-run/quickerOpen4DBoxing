@@ -191,6 +191,8 @@ def patch(name, text):
   pthread_mutex_unlock(&disksLock);
 """)
         text = must_sub(name, text, "static DosFile *diskFiles;", "static DosFile *diskFiles;\nstatic pthread_mutex_t disksLock = PTHREAD_MUTEX_INITIALIZER;")
+        # (the BIOS's tick, its data written straight: their page marked for the machine's deltas)
+        text = must_sub(name, text, "static void bios_int8(void)\n{\n", "static void bios_int8(void)\n{\n  asm_dirty[4] = 1;\n")
         # (machine.c's fast fight: the time of the next thing that happens, the timer's interrupt or a frame's end, in
         # PIT ticks, and the machine's speed, for time to go to it)
         text = must_sub(name, text, "// time passes: the timer's interrupts, the keys, the frames\n", """uint64_t game_next_event(void)
@@ -245,6 +247,12 @@ int game_run(const GameHost *h)
     if name == "dos.h":
         text = must_sub(name, text, "#endif", "int dos_open_host_files(void);  // quickerOpen4DBoxing (dos.c)\n#endif", count=text.count("#endif"))
     if name == "asm2c.c":
+        # (the services' writes for the machine's deltas: the BIOS's data for the keyboard, the clock, the mouse and
+        # the system services; DOS, the video and the rest may write anywhere)
+        text = must_sub(name, text, "void asm_bios_service(u8 n)\n{\n",
+                        "void asm_bios_service(u8 n)\n{\n"
+                        "  if (n == 0x09 || n == 0x16 || n == 0x1A || n == 0x33 || n == 0x15 || n == 0x74) asm_dirty[4] = 1;\n"
+                        "  else asm_dirty_all = 1;\n")
         # the program's interrupt handlers, the drivers and the BIOS's code run in calls the machine cannot stop in:
         # asm_unclean counts them (the stops wait for the next backward jump of the program's own flow)
         text = must_sub(name, text, "  R.if_ = false;  // (the handler runs with interrupts off until it allows them or returns)\n  asm_far_call(seg, off);\n",
@@ -269,6 +277,10 @@ int game_run(const GameHost *h)
         text = must_sub(name, text, "#else\n#define ASM_I(o) ((void)0)\n", "#elif defined(O4DB_TRACE)\n#define ASM_I(o) (asm_trace_ip = ((u32)R.cs << 16) | (u16)(o))\n#define ASM_REP_CHECK() ((void)0)\n#else\n#define ASM_I(o) ((void)0)\n")
     if name == "types.h":
         text = must_sub(name, text, "#include <stdint.h>\n", "#include <stdint.h>\n#include \"tls.h\"\n")
+        # (the pages written since the machine's last delta: machine.c; the runtime's word writes mark theirs)
+        text = must_sub(name, text, "static inline void mem_w16(u32 a, u16 v) { g_mem[a] = (u8)v; g_mem[a + 1] = (u8)(v >> 8); }",
+                        "extern O4DB_TLS u8 asm_dirty[];\nextern O4DB_TLS int asm_dirty_all;\n"
+                        "static inline void mem_w16(u32 a, u16 v) { g_mem[a] = (u8)v; g_mem[a + 1] = (u8)(v >> 8); asm_dirty[a >> 8] = 1; asm_dirty[(a + 1) >> 8] = 1; }")
     return text
 
 
@@ -348,13 +360,38 @@ static inline u16 asm_rd16(u16 seg, u16 a) { return *(u16a *)far_ptr(seg, a); }
 extern O4DB_TLS u32 asm_watchAddr;
 void asm_watch_hit(u32 addr, u16 value);
 extern O4DB_TLS void (*asm_watch_hook)(u32 addr, u16 value);
+// (every write marks its 256-byte page for the machine's deltas, asm_dirty: machine.c)
 #ifdef O4DB_TRACE
 extern void (*asm_trace_write)(u32 addr, u16 value, int size);
-static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 1); }
-static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 2); }
+static inline void asm_wr8(u16 seg, u16 off, u8 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  g_mem[a] = v;
+  asm_dirty[a >> 8] = 1;
+  if (asm_trace_write) asm_trace_write(a, v, 1);
+}
+static inline void asm_wr16(u16 seg, u16 off, u16 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  *(u16a *)(g_mem + a) = v;
+  asm_dirty[a >> 8] = 1;
+  asm_dirty[(a + 1) >> 8] = 1;
+  if (asm_trace_write) asm_trace_write(a, v, 2);
+}
 #else
-static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; }
-static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; }
+static inline void asm_wr8(u16 seg, u16 off, u8 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  g_mem[a] = v;
+  asm_dirty[a >> 8] = 1;
+}
+static inline void asm_wr16(u16 seg, u16 off, u16 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  *(u16a *)(g_mem + a) = v;
+  asm_dirty[a >> 8] = 1;
+  asm_dirty[(a + 1) >> 8] = 1;
+}
 #endif
 """
 
@@ -444,6 +481,9 @@ def resume_transform(text):
                     "  if (asm_test_skip & 1) { R.sp += 4; return; }\n  if (asm_skip_draw) { R.sp += 4; return; }\n")
     text = must_sub("box_core.c", text, "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); PUSH(M16(SS, (u16)(R.bp + 0xffee)));",
                     "ASM_I(0x1e84); ASM_BLOCK(4, 0x1e84); if (asm_fast) asm_fast_miss(); PUSH(M16(SS, (u16)(R.bp + 0xffee)));")
+    # the camera's and the boxers' world transforms (1b1d:115a) not made either, but in a replay's whole frames
+    # (tests/o4dbFastCheck: the fight the same without them)
+    text = must_sub("box_core.c", text, "  FN(0x1B1D115A);\n", "  FN(0x1B1D115A);\n  if (asm_skip_draw) { R.sp += 4; return; }\n")
     # (and the busy waits on the timer's count, 2afc:385d's and 2afc:388b's loops: time to the timer's next interrupt)
     for fn, back in (("a_2afc_385d", "0x385d"), ("a_2afc_388b", "0x38a2")):
         start = text.index(f"static void {fn}(void)\n{{\n")

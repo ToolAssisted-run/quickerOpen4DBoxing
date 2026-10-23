@@ -260,6 +260,7 @@ static void midi_out(uint8_t b, uint64_t t)
 // the program's later calls find them
 static void bios_int8(void)
 {
+  asm_dirty[4] = 1;
   u32 ticks = ((u32)mem_r16(0x46C) | ((u32)mem_r16(0x46E) << 16)) + 1;
   if (ticks >= 0x1800B0) { g_mem[0x470]++; ticks = 0; }
   mem_w16(0x46C, (u16)ticks);

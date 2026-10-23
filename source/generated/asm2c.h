@@ -82,13 +82,38 @@ static inline u16 asm_rd16(u16 seg, u16 a) { return *(u16a *)far_ptr(seg, a); }
 extern O4DB_TLS u32 asm_watchAddr;
 void asm_watch_hit(u32 addr, u16 value);
 extern O4DB_TLS void (*asm_watch_hook)(u32 addr, u16 value);
+// (every write marks its 256-byte page for the machine's deltas, asm_dirty: machine.c)
 #ifdef O4DB_TRACE
 extern void (*asm_trace_write)(u32 addr, u16 value, int size);
-static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 1); }
-static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; if (asm_trace_write) asm_trace_write(((u32)seg << 4) + off, v, 2); }
+static inline void asm_wr8(u16 seg, u16 off, u8 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  g_mem[a] = v;
+  asm_dirty[a >> 8] = 1;
+  if (asm_trace_write) asm_trace_write(a, v, 1);
+}
+static inline void asm_wr16(u16 seg, u16 off, u16 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  *(u16a *)(g_mem + a) = v;
+  asm_dirty[a >> 8] = 1;
+  asm_dirty[(a + 1) >> 8] = 1;
+  if (asm_trace_write) asm_trace_write(a, v, 2);
+}
 #else
-static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; }
-static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; }
+static inline void asm_wr8(u16 seg, u16 off, u8 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  g_mem[a] = v;
+  asm_dirty[a >> 8] = 1;
+}
+static inline void asm_wr16(u16 seg, u16 off, u16 v)
+{
+  const u32 a = ((u32)seg << 4) + off;
+  *(u16a *)(g_mem + a) = v;
+  asm_dirty[a >> 8] = 1;
+  asm_dirty[(a + 1) >> 8] = 1;
+}
 #endif
 #define W8(s, a, v) asm_wr8(SEGV_##s, (u16)(a), (u8)(v))
 #define W16(s, a, v) asm_wr16(SEGV_##s, (u16)(a), (u16)(v))

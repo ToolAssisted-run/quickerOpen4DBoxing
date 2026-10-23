@@ -92,7 +92,8 @@ int main(int argc, char **argv)
   snprintf(mk, sizeof mk, "mkdir -p %s", wdir);
   if (system(mk)) return 1;
   GameHost host = { .gameDir = argv[1], .writeDir = wdir, .program = "4DBMCGA.EXE", .cmdline = cmd, .frame = frame,
-                    .cycles = 22000, .startTime = days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + s };
+                    .cycles = getenv("SPEED") ? (uint32_t)strtoul(getenv("SPEED"), NULL, 10) : 22000,  // (the environment's SPEED: the PC's speed)
+                    .startTime = days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + s };
   struct timespec t0, t1;
   clock_gettime(CLOCK_MONOTONIC, &t0);
   apply(&rows[0]);
