@@ -243,6 +243,17 @@ int game_run(const GameHost *h)
         text += RESUME_RUNTIME
     if name == "asm2c.h":
         text = must_sub(name, text, "#define ASM_BACK(t) (asm_ip = (t), asm_back())", "#define ASM_BACK(t) (asm_ip = (t), asm_back())\n" + RESUME_HEADER)
+        # the MCGA build's memory: none of the other cards' paths (the CGA's wait states, the EGA's planes, the Tandy's
+        # banks) nor the debugging's watched address apply (machine.c checks the cards' state stays so): the
+        # program's accesses are the megabyte's, inlined
+        start = text.index("static inline u8 asm_rd8(u16 seg, u16 a)")
+        end = text.index("#define W8(s, a, v)")
+        text = text[:start] + MCGA_ACCESS + text[end:]
+        # the hooks of the blocks and of the functions' entries: none in a machine (its step function is marked by
+        # the generated code itself: ASM_STEP_MARK), so not even their tests
+        text = must_sub(name, text, "#define ASM_BLOCK(n, off) do { asm_icount += (n); if (asm_block_hook) asm_block_hook(off); } while (0)",
+                        "#define ASM_BLOCK(n, off) (asm_icount += (n))")
+        text = must_sub(name, text, "#define FN(x) do { if (asm_fn_hook) asm_fn_hook(x); } while (0)", "#define FN(x) ((void)0)")
     if name == "types.h":
         text = must_sub(name, text, "#include <stdint.h>\n", "#include <stdint.h>\n#include \"tls.h\"\n")
     return text
@@ -279,6 +290,21 @@ static inline void ASM_ICS(u32 site, u16 seg, u16 off)
 #define ASM_RSITE() (asm_shadow[asm_sdepth].site)
 #define ASM_RCALL() (asm_sdepth++)
 #define ASM_RDONE() (asm_resuming = 0)
+// the machine's step function marked where the generated code enters it (25bb:0202, the boxers' controls read)
+void asm_step_mark(void);  // (machine.c)
+#define ASM_STEP_MARK() asm_step_mark()
+"""
+
+MCGA_ACCESS = r"""// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's)
+static inline u8 asm_rd8(u16 seg, u16 a) { return g_mem[((u32)seg << 4) + a]; }
+static inline u16 asm_rd16(u16 seg, u16 a) { return *(u16a *)far_ptr(seg, a); }
+#define M8(s, a) asm_rd8(SEGV_##s, (u16)(a))
+#define M16(s, a) asm_rd16(SEGV_##s, (u16)(a))
+extern O4DB_TLS u32 asm_watchAddr;
+void asm_watch_hit(u32 addr, u16 value);
+extern O4DB_TLS void (*asm_watch_hook)(u32 addr, u16 value);
+static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; }
+static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; }
 """
 
 RESUME_RUNTIME = r"""
@@ -346,6 +372,8 @@ def resume_transform(text):
         return f"static void {fname}(void)\n{{\n{entry}" + "\n".join(new) + "\n}\n"
 
     text = FUNC_RE.sub(one, text)
+    # the step function's entry (machine.c: a step ends where the game reads the boxers' controls)
+    text = must_sub("box_core.c", text, "static void a_25bb_0202(void)\n{\n", "static void a_25bb_0202(void)\n{\n  ASM_STEP_MARK();\n")
     return text, stats
 
 

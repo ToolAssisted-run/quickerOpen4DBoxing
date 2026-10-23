@@ -127,6 +127,8 @@ typedef struct
 } Machine;
 static O4DB_TLS Machine M;
 
+static void o4db_load_pristine(void);
+
 // the run in progress (not state: a run starts and ends in one call)
 static O4DB_TLS const O4dbInput *runInputs;
 static O4DB_TLS size_t runCount, runAvail, runIndex;
@@ -136,8 +138,19 @@ void o4db_set_frame_hook(void (*hook)(uint64_t frame, void *ctx), void *ctx) { f
 static O4DB_TLS jmp_buf yieldJump;
 static O4DB_TLS int threadReady;  // the thread's setup made (game_setup: by a start or a load)
 
+// the thread's machine before its first start (every later start begins from it: the game's setup does not reset all
+// the machine's state, a video mode set by the last run among it)
+static O4DB_TLS uint8_t *pristine;
+
 void o4db_new(const O4dbInput *boot)
 {
+  if (!pristine)
+  {
+    pristine = malloc(o4db_state_size());
+    o4db_save(pristine);
+  }
+  else
+    o4db_load_pristine();
   memset(&M, 0, sizeof M);
   M.boot = boot ? *boot : (O4dbInput){ 0, O4DB_MOUSE_X_NEUTRAL, O4DB_MOUSE_Y_NEUTRAL };
   M.given[0] = O4DB_MOUSE_X_NEUTRAL;
@@ -192,23 +205,24 @@ static void apply_buttons(const O4dbInput *in)
 }
 
 // Steps ended by the game reading its controls (o4db_set_step_function): the function, the frames at most, and the
-// run in progress being such a step
+// run in progress being such a step. The generated program marks the controls' reader's entry (25bb:0202:
+// asm_step_mark), the only step function this machine knows
 static O4DB_TLS uint32_t stepFn;
 static O4DB_TLS unsigned stepMaxFrames;
 static O4DB_TLS int stepping;
 static O4DB_TLS uint64_t stepFnEntries;
-void cheats_fn(uint32_t addr);
-static void machine_fn(uint32_t addr)
+void asm_step_mark(void)
 {
-  if (addr == stepFn)
-  {
-    stepFnEntries++;
-    if (stepping && runIndex >= 1) asm_yield_req = 1;
-  }
-  cheats_fn(addr);
+  stepFnEntries++;
+  if (stepping && runIndex >= 1) asm_yield_req = 1;
 }
 void o4db_set_step_function(uint32_t fn, unsigned maxFrames)
 {
+  if (fn != 0 && fn != 0x25BB0202)
+  {
+    fprintf(stderr, "quickerOpen4DBoxing: the step function can only be 25BB0202 (the boxers' controls)\n");
+    abort();
+  }
   stepFn = fn;
   stepMaxFrames = maxFrames;
 }
@@ -264,7 +278,6 @@ uint64_t o4db_run_ahead(const O4dbInput *inputs, size_t n, size_t avail)
       // Chimera's first step: its buttons before the game starts
       M.booted = 1;
       threadReady = 1;
-      asm_fn_hook = machine_fn;
       apply_buttons(&M.boot);
       asm_unclean = 0;
       asm_sdepth = 0;
@@ -283,6 +296,11 @@ uint64_t o4db_run_ahead(const O4dbInput *inputs, size_t n, size_t avail)
     M.exitCode = code;
   }
   runInputs = NULL;
+  if (vga.planar || asm_vramCost || asm_tandyBase)
+  {
+    fprintf(stderr, "quickerOpen4DBoxing: the game left the MCGA build's video (planar %d, CGA waits %u, Tandy bank %u)\n", vga.planar, asm_vramCost, asm_tandyBase);
+    abort();
+  }
   return runIndex;
 }
 
@@ -300,6 +318,12 @@ static void load_part(void *data, size_t size, void *c)
   const uint8_t **p = (const uint8_t **)c;
   memcpy(data, *p, size);
   *p += size;
+}
+
+static void o4db_load_pristine(void)
+{
+  const uint8_t *p = pristine + sizeof M;
+  o4db_state_all(load_part, &p);
 }
 
 size_t o4db_state_size(void)
@@ -322,7 +346,6 @@ void o4db_load(const void *in)
   // a thread whose machine never started has not its setup (the hooks, DOS, the program's loading): made first
   if (!threadReady)
   {
-    asm_fn_hook = machine_fn;
     game_setup(&host);
     threadReady = 1;
   }
@@ -393,7 +416,6 @@ void o4db_load_delta(const void *in, unsigned maxPages)
 {
   if (!threadReady)
   {
-    asm_fn_hook = machine_fn;
     game_setup(&host);
     threadReady = 1;
   }

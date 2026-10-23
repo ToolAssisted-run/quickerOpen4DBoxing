@@ -42276,6 +42276,7 @@ static u16 f_25bb_0196(u16 p0, u16 p1)
 // 25bb:0202 FUN_25bb_0202  FIX: recompiled from the machine code (asm2c)
 static void a_25bb_0202(void)
 {
+  ASM_STEP_MARK();
   if (asm_resuming) switch (ASM_RSITE()) { case 3566: ASM_RCALL(); goto R_3566; case 3567: ASM_RCALL(); goto R_3567; case 3568: ASM_RCALL(); goto R_3568; case 3569: ASM_RCALL(); goto R_3569; case 3570: ASM_RDONE(); goto L_023d; case 3571: ASM_RDONE(); goto L_023d; case 3572: ASM_RDONE(); goto L_023d; case 3573: ASM_RCALL(); goto R_3573; case 3574: ASM_RCALL(); goto R_3574; case 3575: ASM_RDONE(); goto L_0275; case 3576: ASM_RDONE(); goto L_0275; case 3577: ASM_RDONE(); goto L_0275; case 3578: ASM_RDONE(); goto L_0282; case 3579: ASM_RDONE(); goto L_0288; case 3580: ASM_RDONE(); goto L_0270; case 3581: ASM_RDONE(); goto L_027a; case 3582: ASM_RCALL(); goto R_3582; default: asm_resume_fail(ASM_RSITE()); }
   FN(0x25BB0202);
   R.cs = 0x1dde;

@@ -53,37 +53,16 @@ static inline void asm_vram_cost(u16 seg, u32 n)
   if (asm_vramCost && seg >= 0xB800 && seg < 0xC000)
     for (u32 k = 0; k < n; k++) { u32 c_ = asm_vram_cost_hook ? asm_vram_cost_hook() : asm_vramCost; asm_icount += c_; asm_waits += c_; }
 }
-static inline u8 asm_rd8(u16 seg, u16 a) { asm_vram_cost(seg, 1); return asm_vga(seg) ? vga_read(seg, a) : g_mem[asm_phys(seg, a)]; }
-static inline u16 asm_rd16(u16 seg, u16 a)
-{
-  asm_vram_cost(seg, 2);
-  if (asm_vga(seg)) return (u16)(vga_read(seg, a) | vga_read(seg, (u16)(a + 1)) << 8);
-  if (asm_tandyBase) return (u16)(g_mem[asm_phys(seg, a)] | g_mem[asm_phys(seg, (u16)(a + 1))] << 8);
-  return *(u16a *)far_ptr(seg, a);
-}
+// (quickerOpen4DBoxing: the MCGA build's memory, every access the megabyte's)
+static inline u8 asm_rd8(u16 seg, u16 a) { return g_mem[((u32)seg << 4) + a]; }
+static inline u16 asm_rd16(u16 seg, u16 a) { return *(u16a *)far_ptr(seg, a); }
 #define M8(s, a) asm_rd8(SEGV_##s, (u16)(a))
 #define M16(s, a) asm_rd16(SEGV_##s, (u16)(a))
-// writes: a watched address (asm_watchAddr, for the tests' debugging) reports its writer
 extern O4DB_TLS u32 asm_watchAddr;
 void asm_watch_hit(u32 addr, u16 value);
 extern O4DB_TLS void (*asm_watch_hook)(u32 addr, u16 value);
-static inline void asm_wr8(u16 seg, u16 off, u8 v)
-{
-  asm_vram_cost(seg, 1);
-  if (asm_vga(seg)) { vga_write(seg, off, v); return; }
-  u32 a = asm_phys(seg, off);
-  if (a == asm_watchAddr) asm_watch_hit(a, v);
-  g_mem[a] = v;
-}
-static inline void asm_wr16(u16 seg, u16 off, u16 v)
-{
-  asm_vram_cost(seg, 2);
-  if (asm_vga(seg)) { vga_write(seg, off, (u8)v); vga_write(seg, (u16)(off + 1), (u8)(v >> 8)); return; }
-  u32 a = asm_phys(seg, off), b = asm_tandyBase ? asm_phys(seg, (u16)(off + 1)) : a + 1;
-  if (a == asm_watchAddr || b == asm_watchAddr) asm_watch_hit(a, v);
-  g_mem[a] = (u8)v;
-  g_mem[b] = (u8)(v >> 8);
-}
+static inline void asm_wr8(u16 seg, u16 off, u8 v) { g_mem[((u32)seg << 4) + off] = v; }
+static inline void asm_wr16(u16 seg, u16 off, u16 v) { *(u16a *)far_ptr(seg, off) = v; }
 #define W8(s, a, v) asm_wr8(SEGV_##s, (u16)(a), (u8)(v))
 #define W16(s, a, v) asm_wr16(SEGV_##s, (u16)(a), (u16)(v))
 #define SETL(r, v) ((r) = (u16)(((r) & 0xFF00) | (u8)(v)))
@@ -297,7 +276,7 @@ extern O4DB_TLS u64 asm_icount;
 // a basic block's start: its instruction count charged, and its offset (in R.cs) to the host's block hook if it
 // has one (traces, the co-simulation)
 extern O4DB_TLS void (*asm_block_hook)(u16 off);
-#define ASM_BLOCK(n, off) do { asm_icount += (n); if (asm_block_hook) asm_block_hook(off); } while (0)
+#define ASM_BLOCK(n, off) (asm_icount += (n))
 // a backward jump to t: time passes; every so many the host looks at its clock (interrupts, frames, keys)
 extern O4DB_TLS int asm_backBudget;
 void asm_back_slow(void);
@@ -334,6 +313,9 @@ static inline void ASM_ICS(u32 site, u16 seg, u16 off)
 #define ASM_RSITE() (asm_shadow[asm_sdepth].site)
 #define ASM_RCALL() (asm_sdepth++)
 #define ASM_RDONE() (asm_resuming = 0)
+// the machine's step function marked where the generated code enters it (25bb:0202, the boxers' controls read)
+void asm_step_mark(void);  // (machine.c)
+#define ASM_STEP_MARK() asm_step_mark()
 
 // every instruction (ASM_I, before it) and every repetition of a repeated string instruction (ASM_REP_CHECK): in the
 // replay variant (ASM_REPLAY, replay.h) the program's instruction count, the oracle's interrupts and frame ends at
@@ -348,7 +330,7 @@ static inline void ASM_ICS(u32 site, u16 seg, u16 off)
 #endif
 // a function's entry, for traces
 extern O4DB_TLS void (*asm_fn_hook)(u32 addr);
-#define FN(x) do { if (asm_fn_hook) asm_fn_hook(x); } while (0)
+#define FN(x) ((void)0)
 void asm_unhandled(void);
 extern O4DB_TLS void (*asm_fatal_hook)(void);  // a fatal error of the emulation: the host's last words (a trace)
 #define ASM_UNHANDLED() asm_unhandled()
