@@ -8,7 +8,8 @@
 // initial sequence's, the machine switched to SPEED at its end (as the emulator's "Initial Speed"); FASTCHECK: the steps
 // also run as the fast fight (o4db_set_fast, as the emulator's "Fast Fight") from the same start, its boxers' steps
 // (1eb6:3354) and its steps' frames compared with the game's; STATE: the machine's state after INITIAL's rows
-// (o4dbBench save) loaded instead of playing them, and OUT only the solution's rows (to follow INITIAL's).
+// (o4dbBench save) loaded instead of playing them, and OUT only the solution's rows (to follow INITIAL's); SAVE_END: the
+// game's machine after the steps saved there (a verified round's end, for o4dbBreak's STATE).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,6 +173,15 @@ int main(int argc, char **argv)
     // (the game's machine again, for the hash below)
     o4db_load(start);
     for (size_t k = 0; k < ns; k++) o4db_step(&steps[k]);
+  }
+  if (getenv("SAVE_END"))
+  {
+    FILE *f = fopen(getenv("SAVE_END"), "wb");
+    void *end = malloc(o4db_state_size());
+    o4db_save(end);
+    if (!f || fwrite(end, 1, o4db_state_size(), f) != o4db_state_size()) { fprintf(stderr, "o4dbSteps2Rows: cannot write %s\n", getenv("SAVE_END")); return 1; }
+    fclose(f);
+    free(end);
   }
   uint64_t h = hash_bytes(o4db_memory(), 0xB0000, 0xcbf29ce484222325ull);
   h = hash_bytes(o4db_registers(), 24, h);

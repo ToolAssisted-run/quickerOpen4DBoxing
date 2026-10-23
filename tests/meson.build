@@ -16,3 +16,7 @@ o4dbFastCheck = executable('o4dbFastCheck', 'o4dbFastCheck.c', dependencies : [ 
 o4dbFastCheckTrace = executable('o4dbFastCheckTrace', 'o4dbFastCheck.c', c_args : [ '-DFASTCHECK_TRACE' ], dependencies : [ quickerOpen4DBoxingTraceDependency ], build_by_default : false)
 o4dbThreads = executable('o4dbThreads', 'o4dbThreads.c', dependencies : [ quickerOpen4DBoxingDependency ])
 o4dbBreak = executable('o4dbBreak', 'o4dbBreak.c', dependencies : [ quickerOpen4DBoxingDependency ])
+o4dbAIWatch = executable('o4dbAIWatch', 'o4dbAIWatch.c', dependencies : [ quickerOpen4DBoxingDependency ])
+o4dbAIWatchTrace = executable('o4dbAIWatchTrace', 'o4dbAIWatch.c', c_args : [ '-DAIWATCH_TRACE' ], dependencies : [ quickerOpen4DBoxingTraceDependency ], build_by_default : false)
+o4dbDeltaCheck = executable('o4dbDeltaCheck', 'o4dbDeltaCheck.c', dependencies : [ quickerOpen4DBoxingDependency ])
+o4dbStateMap = executable('o4dbStateMap', 'o4dbStateMap.c', include_directories : include_directories('../source/generated'), dependencies : [ quickerOpen4DBoxingDependency ])

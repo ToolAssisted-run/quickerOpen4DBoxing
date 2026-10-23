@@ -29,7 +29,6 @@ static void *make(void *arg)
   o4db_set_unsaved(0xA0000, 0xAFFFF);
   o4db_set_unsaved(0x68000, 0x71FFF);
   o4db_set_unsaved(0x88000, 0x88FFF);
-  o4db_set_unsaved(0x51000, 0x51FFF);
   mem[k] = malloc(0x110000);
   memcpy(mem[k], o4db_memory(), 0x110000);
   printf("machine %d: %d pages differ from the reference, frame %llu\n", k, o4db_set_reference(), (unsigned long long)o4db_frames());
