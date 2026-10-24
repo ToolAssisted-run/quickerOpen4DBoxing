@@ -43,22 +43,22 @@ static void write_hook(uint32_t addr, uint16_t value, int size)
 }
 #endif
 
-static uint64_t parse(const char *line)
+static O4dbButtons parse(const char *line)
 {
-  uint64_t b = 0;
+  O4dbButtons b = 0;
   if (line[0] == '|')
   {
     // (a Chimera row, a JaffarPlus solution's line: "|  x,  y,<67 buttons>|", or the 57 before the function keys)
     const char *c = strchr(line, ',');
     c = c ? strchr(c + 1, ',') : NULL;
     for (int k = 0; c && k < MOVIE_BUTTONS && c[1 + k] && c[1 + k] != '|'; k++)
-      if (c[1 + k] != '.') b |= 1ull << k;
+      if (c[1 + k] != '.') b |= (O4dbButtons)1 << k;
     return b;
   }
   for (const char *c = line; *c && *c != '\n'; c++)
   {
     const char *k = strchr(mnemonics, *c);
-    if (k && *c != '.') b |= 1ull << (k - mnemonics);
+    if (k && *c != '.') b |= (O4dbButtons)1 << (k - mnemonics);
   }
   return b;
 }

@@ -27,7 +27,7 @@ namespace jaffar
 
 struct input_t
 {
-  uint64_t buttons = 0; // bit k: the k-th button above
+  __extension__ unsigned __int128 buttons = 0; // bit k: the k-th button above (67: wider than 64 bits)
   int16_t mouseX = 160;
   int16_t mouseY = 100;
 };
@@ -54,7 +54,7 @@ public:
     for (size_t k = 0; k < count; k++)
     {
       const char c = s[13 + k];
-      if (c == mnemonics[k]) input.buttons |= 1ull << k;
+      if (c == mnemonics[k]) input.buttons |= (unsigned __int128)1 << k;
       else if (c != '.') reportBadInputString(s);
     }
     return input;

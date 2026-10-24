@@ -9,10 +9,11 @@
 
 static const char k_mnemonics[] = "<>UDLRQEZCKON_BXT^!%&abcdefghijklmnopqrstuvwxyz0123456789AFGHIJMPSV";  // (the last ten F1-F10)
 #define MOVIE_BUTTONS 67  // (a row of the 57 earlier buttons, before the function keys, is read as those)
+__extension__ typedef unsigned __int128 MovieButtons;  // (67 buttons: wider than 64 bits; machine.h's O4dbButtons)
 
 typedef struct
 {
-  uint64_t buttons;
+  MovieButtons buttons;
   int16_t mouseX, mouseY;
 } MovieInput;
 
@@ -39,7 +40,7 @@ static MovieInput *movie_load(const char *path, size_t *n)
       if (sscanf(line, "|%d,%d,", &mx, &my) != 2) continue;
       const char *b = strchr(strchr(line, ',') + 1, ',') + 1;
       for (int k = 0; k < MOVIE_BUTTONS && b[k] && b[k] != '|'; k++)
-        if (b[k] != '.') m.buttons |= 1ull << k;
+        if (b[k] != '.') m.buttons |= (MovieButtons)1 << k;
       m.mouseX = (int16_t)mx;
       m.mouseY = (int16_t)my;
     }
@@ -50,7 +51,7 @@ static MovieInput *movie_load(const char *path, size_t *n)
       for (char *c = line; *c; c++)
       {
         const char *p = strchr(k_mnemonics, *c);
-        if (p && *c) m.buttons |= 1ull << (p - k_mnemonics);
+        if (p && *c) m.buttons |= (MovieButtons)1 << (p - k_mnemonics);
       }
     }
     if (count == cap) in = realloc(in, (cap *= 2) * sizeof *in);
@@ -62,7 +63,7 @@ static MovieInput *movie_load(const char *path, size_t *n)
 }
 
 // a row as Chimera's: the mouse's place, then a mnemonic or '.' per button
-static void movie_write_row(FILE *f, uint64_t buttons, int x, int y)
+static void movie_write_row(FILE *f, MovieButtons buttons, int x, int y)
 {
   fprintf(f, "|%5d,%5d,", x, y);
   for (int k = 0; k < MOVIE_BUTTONS; k++) fputc((buttons >> k) & 1 ? k_mnemonics[k] : '.', f);

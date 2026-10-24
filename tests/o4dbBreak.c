@@ -47,13 +47,13 @@ static void put_rows(FILE *out, const O4dbInput *row, uint64_t frames)
   for (uint64_t k = 0; out && k < frames; k++) movie_write_row(out, row->buttons, row->mouseX, row->mouseY);
 }
 
-static uint64_t buttons_of(const char *keys)
+static O4dbButtons buttons_of(const char *keys)
 {
-  uint64_t b = 0;
+  O4dbButtons b = 0;
   for (const char *c = keys; *c; c++)
   {
     const char *p = strchr(k_mnemonics, *c);
-    if (p) b |= 1ull << (p - k_mnemonics);
+    if (p) b |= (O4dbButtons)1 << (p - k_mnemonics);
   }
   return b;
 }

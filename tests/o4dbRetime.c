@@ -51,7 +51,7 @@ static size_t nPlan;
 static uint64_t firstFrame[MAXR];  // (the plan's frame index where each reading count began, +1; 0 none)
 static uint64_t lastEntries, sinceFrame, frameIdx;
 static O4dbInput cur;
-static struct { uint64_t read; uint64_t key; } cams[256];
+static struct { uint64_t read; O4dbButtons key; } cams[256];
 static int nCams, held = 3;
 static FILE *out;
 
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     cams[nCams].read = strtoull(c, &end, 10);
     if (*end != ':' || !end[1]) break;
     const char *p = strchr(k_mnemonics, end[1]);
-    cams[nCams++].key = p ? 1ull << (p - k_mnemonics) : 0;
+    cams[nCams++].key = p ? (O4dbButtons)1 << (p - k_mnemonics) : 0;
     c = end + 2;
     if (*c == ',') c++;
   }

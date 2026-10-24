@@ -25,10 +25,11 @@ extern "C" {
 // The buttons (bit k: boxing-driver.h's BOX_BTN k: 0 the mouse's left, 1 its right, 2-11 the keypad's 8 2 4 6 7 9 1
 // 3 5 0, 12 Enter, 13 Space, 14 Backspace, 15 Esc, 16 Tab, 17 left Shift, 18 right Shift, 19 Ctrl, 20 Alt, 21-46 the
 // letters a-z, 47-56 the digits 0-9, 57-66 the function keys F1-F10: the ring's cameras and panels) and the mouse's
-// place (0-319, 0-199)
+// place (0-319, 0-199). 67 buttons: wider than 64 bits
+__extension__ typedef unsigned __int128 O4dbButtons;
 typedef struct
 {
-  uint64_t buttons;
+  O4dbButtons buttons;
   int16_t mouseX, mouseY;
 } O4dbInput;
 

@@ -173,7 +173,7 @@ int main(int argc, char **argv)
     if (getenv("CALIBRATE_INPUT"))
     {
       cal = (O4dbInput){ 0, 135, 65 };
-      for (const char *c = getenv("CALIBRATE_INPUT"); *c; c++) cal.buttons |= 1ull << (strchr(k_mnemonics, *c) - k_mnemonics);
+      for (const char *c = getenv("CALIBRATE_INPUT"); *c; c++) cal.buttons |= (O4dbButtons)1 << (strchr(k_mnemonics, *c) - k_mnemonics);
     }
     load_state(deltas, maxPages);
     for (int k = 0; k < n; k++) o4db_step(&cal);
@@ -211,7 +211,7 @@ int main(int argc, char **argv)
       char keys[4];
       snprintf(keys, sizeof keys, "%s%s", dirs[d], buttons[b]);
       all[n] = (O4dbInput){ 0, 135, 65 };
-      for (const char *c = keys; *c; c++) all[n].buttons |= 1ull << (strchr(k_mnemonics, *c) - k_mnemonics);
+      for (const char *c = keys; *c; c++) all[n].buttons |= (O4dbButtons)1 << (strchr(k_mnemonics, *c) - k_mnemonics);
     }
   const int everySibling = getenv("SIBLINGS") && !strcmp(getenv("SIBLINGS"), "all");
   int differed = 0, dsDiffered = 0;

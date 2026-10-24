@@ -46,13 +46,13 @@ static size_t hashed(uint8_t *out)
   return n;
 }
 
-static uint64_t parse(const char *s, size_t len)
+static O4dbButtons parse(const char *s, size_t len)
 {
-  uint64_t b = 0;
+  O4dbButtons b = 0;
   for (size_t k = 0; k < len; k++)
   {
     const char *p = strchr(k_mnemonics, s[k]);
-    if (p && s[k] != '-') b |= 1ull << (p - k_mnemonics);
+    if (p && s[k] != '-') b |= (O4dbButtons)1 << (p - k_mnemonics);
   }
   return b;
 }
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
   const int K = atoi(argv[4]);
   const size_t sample = getenv("SAMPLE") ? strtoull(getenv("SAMPLE"), NULL, 10) : 1;
   // the groups
-  uint64_t groups[16][32];
+  O4dbButtons groups[16][32];
   int nGroups = 0, nIn[16] = { 0 };
   for (const char *g = argv[5]; *g && nGroups < 16;)
   {
