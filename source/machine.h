@@ -2,7 +2,7 @@
 // saved and loaded. One machine runs on a thread at a time (its state is the thread's: tools/generate.py); a machine
 // is moved between threads, or several share one, through its saved state (o4db_save, o4db_load).
 //
-// The inputs are Chimera's core's (chimera-core-open4dboxing's waterbox/boxing-driver.c): 57 buttons (the mouse's two,
+// The inputs are Chimera's core's (chimera-core-open4dboxing's waterbox/boxing-driver.c): 67 buttons (the mouse's two,
 // the keyboard's keys the game reads) and the mouse's place in the picture, and they reach the game as there: at each
 // frame's end, the keys that changed as their make and break codes (the modifiers that went down first, those that
 // came up last), the mouse moved only when its place changed. A run of n inputs gives the k-th to the k-th frame end
@@ -18,13 +18,14 @@
 extern "C" {
 #endif
 
-#define O4DB_BUTTONS 57
+#define O4DB_BUTTONS 67
 #define O4DB_MOUSE_X_NEUTRAL 160
 #define O4DB_MOUSE_Y_NEUTRAL 100
 
 // The buttons (bit k: boxing-driver.h's BOX_BTN k: 0 the mouse's left, 1 its right, 2-11 the keypad's 8 2 4 6 7 9 1
 // 3 5 0, 12 Enter, 13 Space, 14 Backspace, 15 Esc, 16 Tab, 17 left Shift, 18 right Shift, 19 Ctrl, 20 Alt, 21-46 the
-// letters a-z, 47-56 the digits 0-9) and the mouse's place (0-319, 0-199)
+// letters a-z, 47-56 the digits 0-9, 57-66 the function keys F1-F10: the ring's cameras and panels) and the mouse's
+// place (0-319, 0-199)
 typedef struct
 {
   uint64_t buttons;
@@ -63,6 +64,8 @@ void o4db_set_step_function(uint32_t fn, unsigned maxFrames);
 uint64_t o4db_step(const O4dbInput *input);
 // Entries of the step function so far (a step that passes none of them is the game not reading its controls)
 uint64_t o4db_step_function_entries(void);
+// (tests) a function called as the game reads the boxers' controls (25bb:0202's entry), with the entries before it
+void o4db_test_read_hook(void (*hook)(uint64_t entries, void *ctx), void *ctx);
 
 // The fight's logic alone (the thread's machine; not part of its state): no scene drawn, and time going to the
 // timer's next tick when the game's frames have nothing to do; a step that meets the game's bug (a missed punch's

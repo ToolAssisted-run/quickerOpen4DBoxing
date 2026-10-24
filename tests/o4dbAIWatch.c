@@ -48,10 +48,10 @@ static uint64_t parse(const char *line)
   uint64_t b = 0;
   if (line[0] == '|')
   {
-    // (a Chimera row, a JaffarPlus solution's line: "|  x,  y,<57 buttons>|")
+    // (a Chimera row, a JaffarPlus solution's line: "|  x,  y,<67 buttons>|", or the 57 before the function keys)
     const char *c = strchr(line, ',');
     c = c ? strchr(c + 1, ',') : NULL;
-    for (int k = 0; c && k < 57 && c[1 + k] && c[1 + k] != '|'; k++)
+    for (int k = 0; c && k < MOVIE_BUTTONS && c[1 + k] && c[1 + k] != '|'; k++)
       if (c[1 + k] != '.') b |= 1ull << k;
     return b;
   }

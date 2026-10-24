@@ -182,6 +182,7 @@ static const uint8_t k_scan[O4DB_BUTTONS] = {
   0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32, 0x31, 0x18, 0x19, 0x10, 0x13, 0x1F,
   0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C,
   0x0B, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
+  0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44,
 };
 static int modifier(int b) { return b == 17 || b == 18 || b == 19 || b == 20; }
 
@@ -229,8 +230,11 @@ static O4DB_TLS uint32_t stepFn;
 static O4DB_TLS unsigned stepMaxFrames;
 static O4DB_TLS int stepping;
 static O4DB_TLS uint64_t stepFnEntries;
+static O4DB_TLS void (*readHook)(uint64_t entries, void *ctx);
+static O4DB_TLS void *readHookCtx;
 void asm_step_mark(void)
 {
+  if (readHook) readHook(stepFnEntries, readHookCtx);
   stepFnEntries++;
   if (stepping && runIndex >= 1) asm_yield_req = 1;
 }
@@ -245,6 +249,11 @@ void o4db_set_step_function(uint32_t fn, unsigned maxFrames)
   stepMaxFrames = maxFrames;
 }
 uint64_t o4db_step_function_entries(void) { return stepFnEntries; }
+void o4db_test_read_hook(void (*hook)(uint64_t entries, void *ctx), void *ctx)
+{
+  readHook = hook;
+  readHookCtx = ctx;
+}
 
 // A frame end: the run's next input given (its last held), and a stop due once the run's are given (a step: when the
 // game read its controls after a frame end of the step, or at its last frame)

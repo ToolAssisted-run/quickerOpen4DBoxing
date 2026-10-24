@@ -1,4 +1,4 @@
-// A movie for the players: Chimera's rows ("|  160,  100,<57 buttons>|": the mouse's place, then a mnemonic or '.'
+// A movie for the players: Chimera's rows ("|  160,  100,<67 buttons>|": the mouse's place, then a mnemonic or '.'
 // per button) or the gate's lines (the mnemonics held, "@X,Y" where the mouse moves; its first line a comment)
 #ifndef O4DB_TESTS_MOVIE_H
 #define O4DB_TESTS_MOVIE_H
@@ -7,7 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char k_mnemonics[] = "<>UDLRQEZCKON_BXT^!%&abcdefghijklmnopqrstuvwxyz0123456789";
+static const char k_mnemonics[] = "<>UDLRQEZCKON_BXT^!%&abcdefghijklmnopqrstuvwxyz0123456789AFGHIJMPSV";  // (the last ten F1-F10)
+#define MOVIE_BUTTONS 67  // (a row of the 57 earlier buttons, before the function keys, is read as those)
 
 typedef struct
 {
@@ -37,7 +38,7 @@ static MovieInput *movie_load(const char *path, size_t *n)
       int mx, my;
       if (sscanf(line, "|%d,%d,", &mx, &my) != 2) continue;
       const char *b = strchr(strchr(line, ',') + 1, ',') + 1;
-      for (int k = 0; k < 57 && b[k] && b[k] != '|'; k++)
+      for (int k = 0; k < MOVIE_BUTTONS && b[k] && b[k] != '|'; k++)
         if (b[k] != '.') m.buttons |= 1ull << k;
       m.mouseX = (int16_t)mx;
       m.mouseY = (int16_t)my;
@@ -64,7 +65,7 @@ static MovieInput *movie_load(const char *path, size_t *n)
 static void movie_write_row(FILE *f, uint64_t buttons, int x, int y)
 {
   fprintf(f, "|%5d,%5d,", x, y);
-  for (int k = 0; k < 57; k++) fputc((buttons >> k) & 1 ? k_mnemonics[k] : '.', f);
+  for (int k = 0; k < MOVIE_BUTTONS; k++) fputc((buttons >> k) & 1 ? k_mnemonics[k] : '.', f);
   fputs("|\n", f);
 }
 

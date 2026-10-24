@@ -8,7 +8,7 @@ original program), generated into a form that
 - stops the program at the first backward jump of its own flow after a video frame ends (not inside an interrupt
   handler, a sound driver or the BIOS), and resumes it there from its saved state alone: each call site pushes its
   number on a shadow call stack, part of the state, and each function goes back to the site it names;
-- gives its inputs as [Chimera's core](https://github.com/ToolAssisted-run/chimera-core-open4dboxing) does (57
+- gives its inputs as [Chimera's core](https://github.com/ToolAssisted-run/chimera-core-open4dboxing) does (67
   buttons and the mouse's place, at each frame's end), so that a run is a Chimera movie.
 
 `tools/generate.py` writes `source/generated/` from `extern/Open4DBoxing/source`; `source/machine.h` is the machine.

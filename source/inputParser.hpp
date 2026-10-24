@@ -3,7 +3,7 @@
 // Input strings for 4D Sports Boxing: Chimera's core's movie rows (chimera-core-open4dboxing's waterbox.config), so a
 // solution's lines are rows of a Chimera movie:
 //
-//   "|  160,  100,<57 buttons>|"
+//   "|  160,  100,<67 buttons>|"   (or the 57 before the function keys: a movie of the earlier core)
 //
 // the mouse's place first (x 0-319, y 0-199, each "%5d,"), then one character a button, its mnemonic when pressed,
 // '.' when not, in this order:
@@ -14,6 +14,7 @@
 //   N _ B X T               Enter (the default controls' punch button), Space, Backspace, Esc, Tab
 //   ^ ! % &                 the left Shift, the right Shift (the default controls' other button), Ctrl, Alt
 //   a-z 0-9                 the letters and the digits
+//   A F G H I J M P S V     the function keys F1-F10 (the ring's cameras and panels)
 
 #include <cstdint>
 #include <cstdio>
@@ -35,20 +36,22 @@ class InputParser
 {
 public:
 
-  static constexpr const char *mnemonics = "<>UDLRQEZCKON_BXT^!%&abcdefghijklmnopqrstuvwxyz0123456789";
-  static constexpr size_t buttonCount = 57;
+  static constexpr const char *mnemonics = "<>UDLRQEZCKON_BXT^!%&abcdefghijklmnopqrstuvwxyz0123456789AFGHIJMPSV";
+  static constexpr size_t buttonCount = 67;
+  static constexpr size_t earlierButtonCount = 57; // (the earlier core's rows, without the function keys)
 
   InputParser(const nlohmann::json &config) {}
 
   inline input_t parseInputString(const std::string &s) const
   {
     input_t input;
-    if (s.size() != 1 + 12 + buttonCount + 1 || s[0] != '|' || s[6] != ',' || s[12] != ',' || s.back() != '|') reportBadInputString(s);
+    const size_t count = s.size() - 14;
+    if ((count != buttonCount && count != earlierButtonCount) || s[0] != '|' || s[6] != ',' || s[12] != ',' || s.back() != '|') reportBadInputString(s);
     int x, y;
     if (std::sscanf(s.c_str(), "|%d,%d,", &x, &y) != 2 || x < 0 || x > 319 || y < 0 || y > 199) reportBadInputString(s);
     input.mouseX = (int16_t)x;
     input.mouseY = (int16_t)y;
-    for (size_t k = 0; k < buttonCount; k++)
+    for (size_t k = 0; k < count; k++)
     {
       const char c = s[13 + k];
       if (c == mnemonics[k]) input.buttons |= 1ull << k;
