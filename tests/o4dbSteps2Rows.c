@@ -8,8 +8,8 @@
 // initial sequence's, the machine switched to SPEED at its end (as the emulator's "Initial Speed"); FASTCHECK: the steps
 // also run as the fast fight (o4db_set_fast, as the emulator's "Fast Fight") from the same start, its boxers' steps
 // (1eb6:3354) and its steps' frames compared with the game's; STATE: the machine's state after INITIAL's rows
-// (o4dbBench save, at SPEED: a machine's speed is not in its state, the machine set up at SPEED) loaded instead of
-// playing them, and OUT only the solution's rows (to follow INITIAL's); SAVE_END: the game's machine after the steps
+// (o4dbBench save; a machine's speed is not in its state: the machine set up at INITIAL_SPEED, the state's, which
+// SPEED by default, then switched to SPEED) loaded instead of playing them, and OUT only the solution's rows (to follow INITIAL's); SAVE_END: the game's machine after the steps
 // saved there (a verified round's end, for o4dbBreak's STATE).
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,7 +77,7 @@ int main(int argc, char **argv)
   const unsigned maxFrames = argc > 5 ? (unsigned)atoi(argv[5]) : 8;
   const uint32_t speed = getenv("SPEED") ? (uint32_t)strtoul(getenv("SPEED"), NULL, 10) : 22000;
   const uint32_t initialSpeed = getenv("INITIAL_SPEED") ? (uint32_t)strtoul(getenv("INITIAL_SPEED"), NULL, 10) : speed;
-  o4db_set_speed(getenv("STATE") ? speed : initialSpeed);
+  o4db_set_speed(initialSpeed);
   if (!o4db_setup(argv[1], argc > 6 ? argv[6] : "mt32", argc > 7 ? argv[7] : "1991-07-30 14:47:00", NULL)) { fprintf(stderr, "%s\n", o4db_error()); return 1; }
   FILE *out = fopen(argv[4], "w");
   printHashes = getenv("HASHES") != NULL;
@@ -103,7 +103,7 @@ int main(int argc, char **argv)
     for (size_t k = 1; k < ni; k++) write_row(out, &init[k]);
     for (uint64_t k = ni > 1 ? ni - 1 : 0; k < f0; k++) write_row(out, &init[ni - 1]);  // (held to the stop)
   }
-  if (!getenv("STATE") && initialSpeed != speed) o4db_test_set_cycles(speed);
+  if (initialSpeed != speed) o4db_test_set_cycles(speed);
   o4db_set_step_function(0x25BB0202, maxFrames);
   uint64_t frames = f0;
   const int fastCheck = getenv("FASTCHECK") != NULL;
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     o4db_test_hooks(event_hook, 0);
     checking = 0;
   }
-  const int trace = getenv("TRACE") != NULL;
+  const int trace = getenv("TRACE") != NULL, stepHash = getenv("STEPHASH") != NULL;
   for (size_t k = 0; k < ns; k++)
   {
     stepStart = nEvents[0];
@@ -129,12 +129,27 @@ int main(int argc, char **argv)
 #define UW(o) ((unsigned)(uint16_t)(ds[(o)] | ds[(o) + 1] << 8))
       char keys[64] = "";
       int n = 0;
-      for (int b = 0; b < 57; b++) if ((steps[k].buttons >> b) & 1) keys[n++] = k_mnemonics[b];
+      for (int b = 0; b < MOVIE_BUTTONS; b++) if ((steps[k].buttons >> b) & 1) keys[n++] = k_mnemonics[b];
       keys[n] = 0;
       fprintf(stderr, "%4zu %-3s f%2llu clk %6u dist %5d | blue (%5d,%5d) hd %4u sta %5d punch %04X ph %3u min %6d req %04X busy %u/%u/%u | red (%5d,%5d) hd %4u hp %5d sta %5d down %u guard %u | thr %u land %u\n",
               k, n ? keys : "-", (unsigned long long)f, UW(0xCF02) | UW(0xCF04) << 16, W(0xCF54), W(0xBA18), W(0xBA1C), UW(0xBA16), W(0xBA20),
               UW(0xBA42), UW(0xBA12 + 0x34) ? (unsigned)ds[UW(0xBA12 + 0x34) + 0x10] : 0u, W(0xBA40), UW(0xB136), UW(0xBA12 + 0x26), UW(0xBA12 + 0x28), UW(0xBA12 + 0x5C),
               W(0xBB0C), W(0xBB10), UW(0xBB0A), W(0xBB16), W(0xBB14), UW(0xBB12), UW(0xBB46), UW(0xA48E), UW(0xA490));
+    }
+    // (STEPHASH: each step's frames and a hash of what decides the fight, as tests/o4dbFightHash's, to stderr: two
+    // solutions that differ only in what is shown, the cameras' function keys, step alike if the showing changes
+    // nothing of the fight)
+    if (stepHash)
+    {
+      static const struct { uint16_t off, n; } parts[] = {
+        { 0xBA12, 0xF4 }, { 0xBB06, 0xF4 }, { 0xA488, 0x74 }, { 0xA4FC, 0x74 }, { 0x5A1C, 4 },   { 0x8472, 4 },   { 0x89F6, 10 },
+        { 0x8A40, 2 },    { 0x8CC8, 16 },   { 0x8E3E, 8 },    { 0x9302, 2 },    { 0xA6B0, 16 }, { 0xAEC0, 2 },   { 0xB130, 16 },
+        { 0xB6B8, 0x48 }, { 0xBD08, 12 },   { 0xCC58, 4 },    { 0xCF02, 0x60 },
+      };
+      const uint8_t *ds = o4db_memory() + ((uint32_t)o4db_data_segment() << 4);
+      uint64_t h = 0xcbf29ce484222325ull;
+      for (size_t p = 0; p < sizeof parts / sizeof *parts; p++) h = hash_bytes(ds + parts[p].off, parts[p].n, h);
+      fprintf(stderr, "step %zu frames %llu fight %016llx\n", k, (unsigned long long)f, (unsigned long long)h);
     }
     for (uint64_t j = 0; j < f; j++) write_row(out, &steps[k]);
     frames += f;
