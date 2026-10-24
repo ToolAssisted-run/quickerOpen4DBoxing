@@ -97,6 +97,10 @@ void o4db_test_hooks(void (*eventHook)(uint32_t fn), unsigned skip);
 // (tests) the machine's speed changed where it is (DOSBox's cycles: instructions a millisecond; the setup's 22,000),
 // for every machine of the process: its instruction count rescaled so that its time goes on from here
 void o4db_test_set_cycles(uint32_t cycles);
+// (tests) the MT-32 driver's MIDI given to the hook as the game writes it, each byte with the PIT's time (1,193,182 Hz:
+// a video's sound; the game's run does not depend on it), for the thread's machine; and the PIT's time now
+void o4db_test_midi_hook(void (*hook)(uint8_t byte, uint64_t t, void *ctx), void *ctx);
+uint64_t o4db_test_now(void);
 // (tests, the trace variant only: the library built with O4DB_TRACE) every read of the program's given to the hook
 // (the address, the value, 1 or 2 bytes), and the reading instruction's CS:IP (CS the program's at its load, 0823)
 void o4db_test_trace_reads(void (*hook)(uint32_t addr, uint16_t value, int size));

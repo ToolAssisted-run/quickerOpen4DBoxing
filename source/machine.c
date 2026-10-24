@@ -78,6 +78,15 @@ static void remove_made(void)
 
 static bool host_frame(void *ctx, uint64_t frame);
 
+// (tests: o4db_test_midi_hook) the MIDI's hook
+static O4DB_TLS void (*midiHook)(uint8_t byte, uint64_t t, void *ctx);
+static O4DB_TLS void *midiHookCtx;
+static void host_midi(void *ctx, uint8_t byte, uint64_t t)
+{
+  (void)ctx;
+  if (midiHook) midiHook(byte, t, midiHookCtx);
+}
+
 int o4db_setup(const char *dir, const char *sound, const char *clockStart, const char *wdir)
 {
   errorText[0] = 0;
@@ -102,14 +111,14 @@ int o4db_setup(const char *dir, const char *sound, const char *clockStart, const
   }
   // as Chimera's core sets the game up (boxing-driver.c's boxdrv_init): the MCGA build, the machine's speed
   // (o4db_set_speed: 22,000 instructions a millisecond, the oracle's 486, by default), the clock's start; no MT-32 to
-  // play the MIDI to (the game's run does not depend on it)
+  // play the MIDI to (the game's run does not depend on it): only a test's hook (o4db_test_midi_hook)
   host = (GameHost){
     .gameDir = gameDir,
     .writeDir = writeDir,
     .program = "4DBMCGA.EXE",
     .cmdline = cmdline,
     .frame = host_frame,
-    .midi = NULL,
+    .midi = host_midi,
     .ctx = NULL,
     .cycles = setupCycles,
     .startTime = start,
@@ -772,6 +781,14 @@ void o4db_test_hooks(void (*eventHook)(uint32_t fn), unsigned skip)
   asm_test_hook = eventHook;
   asm_test_skip = skip;
 }
+
+void o4db_test_midi_hook(void (*hook)(uint8_t byte, uint64_t t, void *ctx), void *ctx)
+{
+  midiHook = hook;
+  midiHookCtx = ctx;
+}
+
+uint64_t o4db_test_now(void) { return game_now(); }
 
 void o4db_test_set_cycles(uint32_t cycles)
 {
